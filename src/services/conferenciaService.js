@@ -40,7 +40,7 @@ function calcularSemelhanca(textoA = "", textoB = "") {
   }
 
   if (a.includes(b) || b.includes(a)) {
-    return 80;
+    return 85;
   }
 
   const palavrasA = new Set(a.split(" ").filter(Boolean));
@@ -89,10 +89,58 @@ function encontrarObraPorNome(nomeInformado, obras = []) {
   };
 }
 
+function limparTituloCapitulo(titulo = "") {
+  return limparParaComparacao(titulo)
+    .replace(/\bcapitulo\b/g, "")
+    .replace(/\bcap\b/g, "")
+    .replace(/\bchapter\b/g, "")
+    .replace(/\bprologo\b/g, "")
+    .replace(/\bparte\b/g, "")
+    .replace(/\bepisodio\b/g, "")
+    .replace(/\bep\b/g, "")
+    .replace(/\bn\s*\d+\b/g, "")
+    .replace(/\b\d+\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function encontrarCapituloPorTitulo(textoPedido = "", capitulos = []) {
+  const pedidoLimpo = limparTituloCapitulo(textoPedido);
+
+  if (!pedidoLimpo) {
+    return null;
+  }
+
+  let melhorCapitulo = null;
+  let melhorPontuacao = 0;
+
+  capitulos.forEach((capitulo) => {
+    const tituloLimpo = limparTituloCapitulo(capitulo.titulo || "");
+    const pontuacao = calcularSemelhanca(pedidoLimpo, tituloLimpo);
+
+    if (pontuacao > melhorPontuacao) {
+      melhorPontuacao = pontuacao;
+      melhorCapitulo = capitulo;
+    }
+  });
+
+  if (melhorPontuacao >= 70) {
+    return melhorCapitulo;
+  }
+
+  return null;
+}
+
 function encontrarCapituloPedido(capituloPedido, capitulos = []) {
   if (!capituloPedido) {
     return null;
   }
+
+  const textoPedido =
+    capituloPedido.texto ||
+    capituloPedido.titulo ||
+    capituloPedido.nome ||
+    "";
 
   if (capituloPedido.tipo === "prologo") {
     return (
@@ -100,21 +148,25 @@ function encontrarCapituloPedido(capituloPedido, capitulos = []) {
       capitulos.find((capitulo) =>
         normalizarParaBusca(capitulo.titulo || "").includes("prologo")
       ) ||
+      encontrarCapituloPorTitulo(textoPedido, capitulos) ||
       null
     );
   }
 
   const numeroPedido = Number(capituloPedido.numero);
 
-  if (!Number.isFinite(numeroPedido)) {
-    return null;
+  if (Number.isFinite(numeroPedido) && numeroPedido > 0) {
+    const porNumero =
+      capitulos.find((capitulo) => Number(capitulo.numero) === numeroPedido) ||
+      capitulos.find((capitulo) => Number(capitulo.ordem) === numeroPedido) ||
+      null;
+
+    if (porNumero) {
+      return porNumero;
+    }
   }
 
-  return (
-    capitulos.find((capitulo) => Number(capitulo.numero) === numeroPedido) ||
-    capitulos.find((capitulo) => Number(capitulo.ordem) === numeroPedido) ||
-    null
-  );
+  return encontrarCapituloPorTitulo(textoPedido, capitulos);
 }
 
 async function montarResumoCapitulo({
@@ -129,7 +181,9 @@ async function montarResumoCapitulo({
     avisarStatus(onStatus, {
       tipo: "erro",
       titulo: "Capítulo não encontrado",
-      detalhe: `${leitura?.obra || "Obra"} — ${capituloPedido?.texto || "Capítulo não identificado"}`
+      detalhe: `${leitura?.obra || "Obra"} — ${
+        capituloPedido?.texto || "Capítulo não identificado"
+      }`
     });
 
     return {
@@ -165,7 +219,9 @@ async function montarResumoCapitulo({
   avisarStatus(onStatus, {
     tipo: "andamento",
     titulo: "Calculando regras do capítulo",
-    detalhe: `${capituloEncontrado.titulo} · ${capituloEncontrado.totalPalavras || 0} palavras`
+    detalhe: `${capituloEncontrado.titulo} · ${
+      capituloEncontrado.totalPalavras || 0
+    } palavras`
   });
 
   const tempoEstimado = estimarTempoLeitura(
@@ -209,13 +265,17 @@ async function montarResumoCapitulo({
     avisarStatus(onStatus, {
       tipo: "sucesso",
       titulo: "Comentários encontrados",
-      detalhe: `${capituloEncontrado.titulo}: ${dadosComentarios.totalDoUsuario || 0} comentário(s) de ${usuario}`
+      detalhe: `${capituloEncontrado.titulo}: ${
+        dadosComentarios.totalDoUsuario || 0
+      } comentário(s) de ${usuario}`
     });
   } catch (error) {
     avisarStatus(onStatus, {
       tipo: "erro",
       titulo: "Erro ao buscar comentários",
-      detalhe: `${capituloEncontrado.titulo}: ${error.message || "erro desconhecido"}`
+      detalhe: `${capituloEncontrado.titulo}: ${
+        error.message || "erro desconhecido"
+      }`
     });
 
     return {
@@ -239,7 +299,9 @@ async function montarResumoCapitulo({
         fim: "",
         totalSegundos: 0
       },
-      motivos: [error.message || "Não consegui buscar os comentários desse capítulo."]
+      motivos: [
+        error.message || "Não consegui buscar os comentários desse capítulo."
+      ]
     };
   }
 
@@ -302,7 +364,9 @@ export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
   avisarStatus(onStatus, {
     tipo: "sucesso",
     titulo: "Ficha interpretada",
-    detalhe: `${ficha.user || "User não encontrado"} · ${ficha.leituras.length} leitura(s) encontrada(s).`
+    detalhe: `${ficha.user || "User não encontrado"} · ${
+      ficha.leituras.length
+    } leitura(s) encontrada(s).`
   });
 
   avisarStatus(onStatus, {
@@ -437,7 +501,12 @@ export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
       avisarStatus(onStatus, {
         tipo: "andamento",
         titulo: "Procurando capítulo",
-        detalhe: `${leitura.obra}: ${capituloPedido.texto || capituloPedido.numero || "capítulo"}`
+        detalhe: `${leitura.obra}: ${
+          capituloPedido.texto ||
+          capituloPedido.titulo ||
+          capituloPedido.numero ||
+          "capítulo"
+        }`
       });
 
       const capituloEncontrado = encontrarCapituloPedido(
@@ -471,7 +540,11 @@ export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
       (item) => item.status === "reprovado" || item.status === "erro-comentarios"
     );
 
-    const statusLeitura = temErro ? "parcial" : temReprovado ? "reprovado" : "aprovado";
+    const statusLeitura = temErro
+      ? "parcial"
+      : temReprovado
+        ? "reprovado"
+        : "aprovado";
 
     avisarStatus(onStatus, {
       tipo: statusLeitura === "aprovado" ? "sucesso" : "erro",
