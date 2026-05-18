@@ -156,6 +156,106 @@ function extrairRotuloAntesDosDoisPontos(linha = "") {
   return partes[0].trim();
 }
 
+function limparTextoCapitulo(texto = "") {
+  return String(texto)
+    .replace(/[✅✔️]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removerPrefixoCapitulo(texto = "") {
+  return limparTextoCapitulo(texto)
+    .replace(/^\s*(cap[ií]tulo|cap|caps|chapter|parte|epis[oó]dio|ep)\s*/i, "")
+    .replace(/^\s*[-–—:.,]+\s*/g, "")
+    .trim();
+}
+
+function criarCapituloPorTexto(texto = "") {
+  const textoLimpo = limparTextoCapitulo(texto);
+  const textoSemPrefixo = removerPrefixoCapitulo(textoLimpo);
+  const busca = normalizarParaBusca(textoLimpo);
+
+  if (!textoLimpo) {
+    return null;
+  }
+
+  if (busca.includes("prologo")) {
+    return {
+      tipo: "prologo",
+      numero: null,
+      texto: "Prólogo",
+      titulo: "Prólogo"
+    };
+  }
+
+  const numero = busca.match(/\d+/)?.[0];
+
+  if (numero) {
+    return {
+      tipo: "capitulo",
+      numero: Number(numero),
+      texto: textoLimpo,
+      titulo: textoSemPrefixo || textoLimpo
+    };
+  }
+
+  return {
+    tipo: "capitulo",
+    numero: null,
+    texto: textoLimpo,
+    titulo: textoSemPrefixo || textoLimpo
+  };
+}
+
+function dividirCapitulosTexto(texto = "") {
+  const original = limparTextoCapitulo(texto);
+
+  if (!original) {
+    return [];
+  }
+
+  const busca = normalizarParaBusca(original);
+
+  if (busca.includes("minha obra")) {
+    return [];
+  }
+
+  if (busca.includes("prologo") && !/\d/.test(busca) && !busca.includes(",")) {
+    return [original];
+  }
+
+  const temSeparadoresFortes = /[,;|/]/.test(original);
+
+  if (temSeparadoresFortes) {
+    return original
+      .split(/[,;|/]+/g)
+      .map((parte) => parte.trim())
+      .filter(Boolean);
+  }
+
+  const padraoNumerosComE = /^\s*(?:cap[ií]tulos?\s*)?\d+\s*(?:e\s*\d+\s*)+$/i;
+
+  if (padraoNumerosComE.test(original)) {
+    return original
+      .replace(/cap[ií]tulos?/gi, "")
+      .split(/\s+e\s+/i)
+      .map((parte) => parte.trim())
+      .filter(Boolean);
+  }
+
+  const padraoPrologoENumeros = /prologo|pr[oó]logo/i;
+
+  if (padraoPrologoENumeros.test(original) && /\d/.test(original)) {
+    return original
+      .replace(/pr[oó]logo/gi, "Prólogo")
+      .split(/\s+e\s+|,\s*/i)
+      .map((parte) => parte.trim())
+      .filter(Boolean);
+  }
+
+  return [original];
+}
+
 export function interpretarCapitulos(texto = "") {
   const busca = normalizarParaBusca(texto);
 
@@ -163,24 +263,15 @@ export function interpretarCapitulos(texto = "") {
     return [];
   }
 
+  const partes = dividirCapitulosTexto(texto);
   const capitulos = [];
 
-  if (busca.includes("prologo")) {
-    capitulos.push({
-      tipo: "prologo",
-      numero: null,
-      texto: "Prólogo"
-    });
-  }
+  partes.forEach((parte) => {
+    const capitulo = criarCapituloPorTexto(parte);
 
-  const numeros = busca.match(/\d+/g) || [];
-
-  numeros.forEach((numero) => {
-    capitulos.push({
-      tipo: "capitulo",
-      numero: Number(numero),
-      texto: `Capítulo ${Number(numero)}`
-    });
+    if (capitulo) {
+      capitulos.push(capitulo);
+    }
   });
 
   return capitulos;
