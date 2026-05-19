@@ -59,15 +59,21 @@ function agruparHistorico(registros = []) {
 
   registros.forEach((registro) => {
     const subNome = registro.subNome || "Sub não identificado";
+    const subId = registro.subId || "";
     const diaSemana = registro.diaSemana || "Sem dia";
     const user = registro.user || "Sem user";
 
     if (!estrutura[subNome]) {
       estrutura[subNome] = {
+        subId,
         subNome,
         registros: [],
         dias: {}
       };
+    }
+
+    if (!estrutura[subNome].subId && subId) {
+      estrutura[subNome].subId = subId;
     }
 
     estrutura[subNome].registros.push(registro);
@@ -215,11 +221,11 @@ export default function Historico() {
       setErro("");
       setMensagem("");
 
-      await limparHistoricoGeral();
+      const total = await limparHistoricoGeral();
 
       setMembroSelecionado(null);
       setSubSelecionado("");
-      setMensagem("Histórico geral limpo com sucesso.");
+      setMensagem(`Histórico geral limpo com sucesso. ${total} registro(s) apagado(s).`);
       await carregarHistorico();
     } catch (error) {
       console.error(error);
@@ -229,14 +235,14 @@ export default function Historico() {
     }
   }
 
-  async function limparSubAtual() {
-    if (!subSelecionado) {
-      setErro("Selecione um sub para limpar somente o histórico dele.");
+  async function limparSub(sub) {
+    if (!sub?.subNome) {
+      setErro("Sub inválido.");
       return;
     }
 
     const confirmar = window.confirm(
-      `Tem certeza que deseja apagar todo o histórico do sub "${subSelecionado}"? Essa ação não pode ser desfeita.`
+      `Tem certeza que deseja apagar todo o histórico do sub "${sub.subNome}"? Essa ação não pode ser desfeita.`
     );
 
     if (!confirmar) {
@@ -248,10 +254,13 @@ export default function Historico() {
       setErro("");
       setMensagem("");
 
-      await limparHistoricoPorSub(subSelecionado);
+      const total = await limparHistoricoPorSub({
+        subId: sub.subId || "",
+        subNome: sub.subNome
+      });
 
       setMembroSelecionado(null);
-      setMensagem(`Histórico do sub "${subSelecionado}" limpo com sucesso.`);
+      setMensagem(`Histórico do sub "${sub.subNome}" limpo com sucesso. ${total} registro(s) apagado(s).`);
       await carregarHistorico();
     } catch (error) {
       console.error(error);
@@ -374,21 +383,12 @@ export default function Historico() {
           </button>
 
           <button
-            className="secondary-button"
-            type="button"
-            onClick={limparSubAtual}
-            disabled={limpando || !subSelecionado}
-          >
-            Limpar sub
-          </button>
-
-          <button
             className="mini-button danger"
             type="button"
             onClick={limparTudo}
             disabled={limpando}
           >
-            Limpar geral
+            {limpando ? "Limpando..." : "Limpar geral"}
           </button>
         </div>
       </div>
@@ -486,6 +486,8 @@ export default function Historico() {
                 <SubHistorico
                   key={sub.subNome}
                   sub={sub}
+                  limpando={limpando}
+                  onLimparSub={limparSub}
                   onAbrirMembro={setMembroSelecionado}
                 />
               ))}
@@ -549,7 +551,7 @@ function ResumoCard({ titulo, valor }) {
   );
 }
 
-function SubHistorico({ sub, onAbrirMembro }) {
+function SubHistorico({ sub, limpando, onLimparSub, onAbrirMembro }) {
   const stats = calcularEstatisticas(sub.registros);
 
   return (
@@ -563,6 +565,17 @@ function SubHistorico({ sub, onAbrirMembro }) {
           </small>
         </div>
       </summary>
+
+      <div className="history-sub-actions">
+        <button
+          className="mini-button danger"
+          type="button"
+          onClick={() => onLimparSub(sub)}
+          disabled={limpando}
+        >
+          {limpando ? "Limpando..." : "Limpar histórico deste sub"}
+        </button>
+      </div>
 
       <div className="member-days-list">
         {DIAS_LEITURA.map((dia) => {
