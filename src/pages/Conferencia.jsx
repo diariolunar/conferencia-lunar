@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { interpretarFicha } from "../utils/interpretarFicha.js";
-import { conferirFichaComBanco } from "../services/conferenciaService.js";
+import {
+  prepararPlanoConferencia,
+  verificarPlanoConferencia
+} from "../services/conferenciaService.js";
 import { salvarHistoricoConferencia } from "../services/historicoService.js";
 import { formatarTempo } from "../utils/estimarTempoLeitura.js";
 import { gerarResumoConferencia } from "../utils/gerarResumoConferencia.js";
@@ -14,6 +16,27 @@ const DIAS_SEMANA = [
   "Sábado",
   "Domingo"
 ];
+
+function definirStatusGeral(resultados = []) {
+  if (!resultados.length) {
+    return "sem-resultados";
+  }
+
+  const validos = resultados.filter((item) => item.status !== "ignorado");
+
+  if (!validos.length) {
+    return "ignorado";
+  }
+
+  const temErro = validos.some(
+    (item) =>
+      item.status === "erro" ||
+      item.status === "parcial" ||
+      item.status === "reprovado"
+  );
+
+  return temErro ? "reprovado" : "aprovado";
+}
 
 function montarRegistroTemporario({ resultado, diaSemana }) {
   const ficha = resultado.ficha || {};
@@ -57,6 +80,7 @@ function montarRegistroTemporario({ resultado, diaSemana }) {
           titulo: capitulo.titulo || "",
           numero: capitulo.numero ?? null,
           tipo: capitulo.tipo || "",
+          modoRegra: capitulo.modoRegra || "normal",
           linkWattpad: capitulo.linkWattpad || "",
           totalPalavras: Number(capitulo.totalPalavras) || 0,
           totalParagrafos: Number(capitulo.totalParagrafos) || 0,
@@ -78,6 +102,7 @@ function montarRegistroTemporario({ resultado, diaSemana }) {
             totalSegundos: 0
           },
           motivos: capituloResultado.motivos || [],
+          aprovacaoManual: capituloResultado.aprovacaoManual || null,
           comentarios: capituloResultado.comentarios || []
         };
       })
@@ -85,301 +110,317 @@ function montarRegistroTemporario({ resultado, diaSemana }) {
   };
 }
 
-function definirStatusGeral(resultados = []) {
-  if (!resultados.length) {
-    return "sem-resultados";
-  }
-
-  const validos = resultados.filter((item) => item.status !== "ignorado");
-
-  if (!validos.length) {
-    return "ignorado";
-  }
-
-  const temErro = validos.some(
-    (item) =>
-      item.status === "erro" ||
-      item.status === "parcial" ||
-      item.status === "reprovado"
-  );
-
-  return temErro ? "reprovado" : "aprovado";
-}
-
-function formatarDataDuplicado(valor) {
-  if (!valor) {
-    return "data não encontrada";
-  }
-
-  try {
-    if (typeof valor.toDate === "function") {
-      return valor.toDate().toLocaleString("pt-BR");
-    }
-
-    return new Date(valor).toLocaleString("pt-BR");
-  } catch {
-    return "data não encontrada";
-  }
-}
-
 export default function Conferencia() {
   const [textoFicha, setTextoFicha] = useState("");
   const [diaSemana, setDiaSemana] = useState("");
-  const [fichaInterpretada, setFichaInterpretada] = useState(null);
+  const [plano, setPlano] = useState(null);
   const [resultadoConferencia, setResultadoConferencia] = useState(null);
   const [registroTemporario, setRegistroTemporario] = useState(null);
+  const [statusAoVivo, setStatusAoVivo] = useState([]);
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
-  const [conferindo, setConferindo] = useState(false);
-  const [salvandoDuplicado, setSalvandoDuplicado] = useState(false);
-  const [duplicadoDetectado, setDuplicadoDetectado] = useState(null);
-  const [statusAoVivo, setStatusAoVivo] = useState([]);
+  const [preparando, setPreparando] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [modalManual, setModalManual] = useState(null);
+  const [motivoManual, setMotivoManual] = useState("");
 
-  function adicionarStatusAoVivo(etapa) {
-    setStatusAoVivo((listaAtual) => [...listaAtual, etapa].slice(-80));
-  }
-
-  function handleInterpretarFicha() {
-    setErro("");
-    setMensagem("");
-    setResultadoConferencia(null);
-    setRegistroTemporario(null);
-    setDuplicadoDetectado(null);
-    setStatusAoVivo([]);
-
-    if (!textoFicha.trim()) {
-      setFichaInterpretada(null);
-      setErro("Cole uma ficha antes de tentar interpretar.");
-      return;
-    }
-
-    const resultado = interpretarFicha(textoFicha);
-
-    if (!resultado.user && resultado.leituras.length === 0) {
-      setFichaInterpretada(null);
-      setErro(
-        "Não consegui encontrar USER, OBRA/GRIMÓRIO/MUNDO ou CAPÍTULOS LIDOS nessa ficha."
-      );
-      return;
-    }
-
-    setFichaInterpretada(resultado);
-    setMensagem("Ficha interpretada com sucesso.");
-  }
-
-  async function salvarResultadoNoHistorico(resultado, permitirDuplicado = false) {
-    await salvarHistoricoConferencia({
-      textoFicha,
-      resultado,
-      diaSemana,
-      permitirDuplicado
-    });
-  }
-
-  async function handleConferirLeituras() {
-    setErro("");
-    setMensagem("");
-    setDuplicadoDetectado(null);
-    setRegistroTemporario(null);
-    setStatusAoVivo([]);
-
-    if (!diaSemana) {
-      setErro("Selecione o dia da semana antes de conferir.");
-      return;
-    }
-
-    if (!textoFicha.trim()) {
-      setErro("Cole uma ficha antes de conferir.");
-      return;
-    }
-
-    try {
-      setConferindo(true);
-
-      adicionarStatusAoVivo({
-        id: "inicio",
-        tipo: "andamento",
-        titulo: "Iniciando conferência",
-        detalhe: "Preparando leitura da ficha.",
-        horario: new Date().toISOString()
-      });
-
-      const resultado = await conferirFichaComBanco(textoFicha, {
-        onStatus: adicionarStatusAoVivo
-      });
-
-      const registro = montarRegistroTemporario({ resultado, diaSemana });
-
-      setFichaInterpretada(resultado.ficha);
-      setResultadoConferencia(resultado);
-      setRegistroTemporario(registro);
-
-      try {
-        adicionarStatusAoVivo({
-          id: "salvando-historico",
-          tipo: "andamento",
-          titulo: "Salvando no histórico",
-          detalhe: "Verificando duplicidade antes de salvar.",
-          horario: new Date().toISOString()
-        });
-
-        await salvarResultadoNoHistorico(resultado, false);
-
-        adicionarStatusAoVivo({
-          id: "historico-salvo",
-          tipo: "sucesso",
-          titulo: "Histórico salvo",
-          detalhe: "Conferência salva sem duplicidade.",
-          horario: new Date().toISOString()
-        });
-
-        setMensagem("Conferência concluída e salva no histórico do sub.");
-      } catch (error) {
-        console.error(error);
-
-        if (error.codigo === "duplicado-exato") {
-          setDuplicadoDetectado({
-            tipo: "duplicado-exato",
-            mensagem:
-              "Essa conferência inteira já foi salva no histórico.",
-            registro: error.registroDuplicado || null,
-            conflitos: []
-          });
-
-          adicionarStatusAoVivo({
-            id: "duplicado-exato",
-            tipo: "erro",
-            titulo: "Duplicidade detectada",
-            detalhe: "Essa conferência inteira já existe no histórico.",
-            horario: new Date().toISOString()
-          });
-
-          setMensagem(
-            "Conferência concluída, mas não foi salva porque já existe igual no histórico."
-          );
-        } else if (error.codigo === "capitulo-duplicado") {
-          setDuplicadoDetectado({
-            tipo: "capitulo-duplicado",
-            mensagem:
-              "Já existe conferência salva para um ou mais capítulos desse membro no mesmo dia.",
-            registro: null,
-            conflitos: error.conflitos || []
-          });
-
-          adicionarStatusAoVivo({
-            id: "capitulo-duplicado",
-            tipo: "erro",
-            titulo: "Capítulo duplicado detectado",
-            detalhe:
-              "Um ou mais capítulos já foram conferidos para esse membro nesse dia.",
-            horario: new Date().toISOString()
-          });
-
-          setMensagem(
-            "Conferência concluída, mas não foi salva porque há capítulo duplicado no mesmo dia."
-          );
-        } else {
-          adicionarStatusAoVivo({
-            id: "erro-salvar",
-            tipo: "erro",
-            titulo: "Erro ao salvar histórico",
-            detalhe: error.message || "Erro desconhecido.",
-            horario: new Date().toISOString()
-          });
-
-          setMensagem("Conferência concluída, mas não consegui salvar no histórico.");
-        }
-      }
-    } catch (error) {
-      console.error(error);
-
-      adicionarStatusAoVivo({
-        id: "erro-geral",
-        tipo: "erro",
-        titulo: "Erro geral na conferência",
-        detalhe: error.message || "Erro desconhecido.",
-        horario: new Date().toISOString()
-      });
-
-      setErro(
-        "Não consegui conferir a ficha com o banco de dados. Verifique se as obras, capítulos e regras estão cadastrados."
-      );
-    } finally {
-      setConferindo(false);
-    }
-  }
-
-  async function handleSalvarDuplicadoMesmoAssim() {
-    if (!resultadoConferencia) {
-      return;
-    }
-
-    try {
-      setSalvandoDuplicado(true);
-      setErro("");
-
-      adicionarStatusAoVivo({
-        id: "salvando-duplicado",
-        tipo: "andamento",
-        titulo: "Salvando duplicado",
-        detalhe: "Salvando conferência mesmo com alerta de duplicidade.",
-        horario: new Date().toISOString()
-      });
-
-      await salvarResultadoNoHistorico(resultadoConferencia, true);
-
-      adicionarStatusAoVivo({
-        id: "duplicado-salvo",
-        tipo: "sucesso",
-        titulo: "Duplicado salvo",
-        detalhe: "Conferência duplicada salva por decisão manual.",
-        horario: new Date().toISOString()
-      });
-
-      setDuplicadoDetectado(null);
-      setMensagem("Conferência duplicada salva mesmo assim no histórico.");
-    } catch (error) {
-      console.error(error);
-      setErro("Não consegui salvar a conferência duplicada.");
-    } finally {
-      setSalvandoDuplicado(false);
-    }
-  }
-
-  async function copiarResumo() {
-    if (!registroTemporario) {
-      setErro("Faça uma conferência antes de copiar o resumo.");
-      return;
-    }
-
-    const resumo = gerarResumoConferencia(registroTemporario);
-
-    try {
-      await navigator.clipboard.writeText(resumo);
-      setMensagem("Resumo copiado para a área de transferência.");
-    } catch (error) {
-      console.error(error);
-      setErro("Não consegui copiar automaticamente. Selecione o resumo manualmente.");
-    }
+  function adicionarStatus(etapa) {
+    setStatusAoVivo((listaAtual) => [...listaAtual, etapa].slice(-100));
   }
 
   function limparTela() {
     setTextoFicha("");
     setDiaSemana("");
-    setFichaInterpretada(null);
+    setPlano(null);
     setResultadoConferencia(null);
     setRegistroTemporario(null);
-    setDuplicadoDetectado(null);
     setStatusAoVivo([]);
     setErro("");
     setMensagem("");
+    setModalManual(null);
+    setMotivoManual("");
+  }
+
+  async function prepararConferencia() {
+    setErro("");
+    setMensagem("");
+    setPlano(null);
+    setResultadoConferencia(null);
+    setRegistroTemporario(null);
+    setStatusAoVivo([]);
+
+    if (!diaSemana) {
+      setErro("Selecione o dia da semana.");
+      return;
+    }
+
+    if (!textoFicha.trim()) {
+      setErro("Cole uma ficha antes de preparar.");
+      return;
+    }
+
+    try {
+      setPreparando(true);
+
+      const novoPlano = await prepararPlanoConferencia(textoFicha, {
+        onStatus: adicionarStatus
+      });
+
+      setPlano(novoPlano);
+      setMensagem("Ficha interpretada. Revise os dados antes de iniciar a verificação.");
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui preparar a conferência.");
+    } finally {
+      setPreparando(false);
+    }
+  }
+
+  function atualizarCapituloSelecionado(leituraId, capituloId, capituloSelecionadoId) {
+    setPlano((estadoAtual) => {
+      if (!estadoAtual) {
+        return estadoAtual;
+      }
+
+      return {
+        ...estadoAtual,
+        leituras: estadoAtual.leituras.map((leitura) => {
+          if (leitura.id !== leituraId) {
+            return leitura;
+          }
+
+          return {
+            ...leitura,
+            capitulos: leitura.capitulos.map((capitulo) => {
+              if (capitulo.id !== capituloId) {
+                return capitulo;
+              }
+
+              const selecionado =
+                leitura.capitulosDisponiveis.find(
+                  (item) => item.id === capituloSelecionadoId
+                ) || null;
+
+              return {
+                ...capitulo,
+                capituloSelecionadoId,
+                capituloSelecionado: selecionado,
+                encontrado: Boolean(selecionado)
+              };
+            })
+          };
+        })
+      };
+    });
+  }
+
+  function atualizarModoRegra(leituraId, capituloId, modoRegra) {
+    setPlano((estadoAtual) => {
+      if (!estadoAtual) {
+        return estadoAtual;
+      }
+
+      return {
+        ...estadoAtual,
+        leituras: estadoAtual.leituras.map((leitura) => {
+          if (leitura.id !== leituraId) {
+            return leitura;
+          }
+
+          return {
+            ...leitura,
+            capitulos: leitura.capitulos.map((capitulo) => {
+              if (capitulo.id !== capituloId) {
+                return capitulo;
+              }
+
+              return {
+                ...capitulo,
+                modoRegra
+              };
+            })
+          };
+        })
+      };
+    });
+  }
+
+  function planoTemPendencia() {
+    if (!plano) {
+      return true;
+    }
+
+    return plano.leituras.some((leitura) => {
+      if (leitura.minhaObra) {
+        return false;
+      }
+
+      if (!leitura.obraEncontrada) {
+        return true;
+      }
+
+      return leitura.capitulos.some((capitulo) => !capitulo.capituloSelecionado);
+    });
+  }
+
+  async function iniciarVerificacao() {
+    setErro("");
+    setMensagem("");
+    setResultadoConferencia(null);
+    setRegistroTemporario(null);
+
+    if (!plano) {
+      setErro("Prepare a ficha antes de iniciar a verificação.");
+      return;
+    }
+
+    if (planoTemPendencia()) {
+      setErro("Resolva as pendências de obra/capítulo antes de verificar.");
+      return;
+    }
+
+    try {
+      setVerificando(true);
+
+      const resultado = await verificarPlanoConferencia(plano, {
+        onStatus: adicionarStatus
+      });
+
+      const registro = montarRegistroTemporario({
+        resultado,
+        diaSemana
+      });
+
+      setResultadoConferencia(resultado);
+      setRegistroTemporario(registro);
+      setMensagem("Verificação concluída. Revise o resultado antes de salvar.");
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui verificar os comentários.");
+    } finally {
+      setVerificando(false);
+    }
+  }
+
+  function abrirAprovacaoManual(leituraIndex, capituloIndex, capitulo) {
+    setModalManual({
+      leituraIndex,
+      capituloIndex,
+      capitulo
+    });
+    setMotivoManual("");
+  }
+
+  function confirmarAprovacaoManual() {
+    if (!modalManual) {
+      return;
+    }
+
+    if (!motivoManual.trim()) {
+      setErro("Informe o motivo da aprovação manual.");
+      return;
+    }
+
+    setResultadoConferencia((estadoAtual) => {
+      if (!estadoAtual) {
+        return estadoAtual;
+      }
+
+      const novoResultado = structuredClone(estadoAtual);
+      const leitura = novoResultado.resultados[modalManual.leituraIndex];
+      const capitulo = leitura.capitulos[modalManual.capituloIndex];
+
+      capitulo.status = "aprovado-manual";
+      capitulo.statusTexto = "Aprovado manualmente";
+      capitulo.aprovacaoManual = {
+        aprovado: true,
+        motivo: motivoManual.trim(),
+        data: new Date().toISOString()
+      };
+
+      const aindaTemReprovado = leitura.capitulos.some(
+        (item) =>
+          item.status === "reprovado" ||
+          item.status === "erro" ||
+          item.status === "erro-comentarios" ||
+          item.status === "capitulo-nao-encontrado"
+      );
+
+      if (!aindaTemReprovado) {
+        leitura.status = "aprovado";
+        leitura.statusTexto = "Leitura aprovada";
+      }
+
+      const registro = montarRegistroTemporario({
+        resultado: novoResultado,
+        diaSemana
+      });
+
+      setRegistroTemporario(registro);
+
+      return novoResultado;
+    });
+
+    setModalManual(null);
+    setMotivoManual("");
+    setMensagem("Capítulo aprovado manualmente. Revise e salve o histórico.");
+  }
+
+  async function salvarNoHistorico() {
+    if (!resultadoConferencia) {
+      setErro("Faça a verificação antes de salvar.");
+      return;
+    }
+
+    try {
+      setSalvando(true);
+      setErro("");
+      setMensagem("");
+
+      await salvarHistoricoConferencia({
+        textoFicha,
+        resultado: resultadoConferencia,
+        diaSemana,
+        permitirDuplicado: false
+      });
+
+      setMensagem("Conferência salva no histórico.");
+    } catch (error) {
+      console.error(error);
+
+      if (error.codigo === "duplicado-exato") {
+        setErro("Essa conferência já existe no histórico.");
+      } else if (error.codigo === "capitulo-duplicado") {
+        setErro("Um ou mais capítulos já foram salvos para esse membro nesse dia.");
+      } else {
+        setErro("Não consegui salvar no histórico.");
+      }
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function copiarResumo() {
+    if (!registroTemporario) {
+      setErro("Verifique a leitura antes de copiar o resumo.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(gerarResumoConferencia(registroTemporario));
+      setMensagem("Resumo copiado.");
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui copiar automaticamente.");
+    }
   }
 
   return (
     <section className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Verificação em lote</p>
+          <p className="eyebrow">Verificação revisada</p>
           <h2>Conferência por ficha</h2>
         </div>
 
@@ -391,33 +432,20 @@ export default function Conferencia() {
       {erro ? <p className="form-error">{erro}</p> : null}
       {mensagem ? <p className="form-success">{mensagem}</p> : null}
 
-      {duplicadoDetectado ? (
-        <AlertaDuplicidade
-          duplicadoDetectado={duplicadoDetectado}
-          salvandoDuplicado={salvandoDuplicado}
-          onSalvarMesmoAssim={handleSalvarDuplicadoMesmoAssim}
-        />
-      ) : null}
-
       <div className="two-columns">
         <div className="panel">
-          <h3>Ficha do membro</h3>
-
-          <p className="muted">
-            Selecione o dia da semana, cole a ficha inteira e acompanhe a
-            conferência em tempo real.
-          </p>
+          <h3>1. Preparar ficha</h3>
 
           <label className="field field-full">
             <span>Dia da semana *</span>
             <select
               value={diaSemana}
               onChange={(event) => setDiaSemana(event.target.value)}
-              disabled={conferindo}
+              disabled={preparando || verificando}
             >
-              <option value="">Selecione o dia</option>
+              <option value="">Selecione</option>
               {DIAS_SEMANA.map((dia) => (
-                <option value={dia} key={dia}>
+                <option key={dia} value={dia}>
                   {dia}
                 </option>
               ))}
@@ -426,362 +454,317 @@ export default function Conferencia() {
 
           <textarea
             className="textarea"
-            placeholder="Cole aqui a ficha do sub..."
             rows="16"
             value={textoFicha}
             onChange={(event) => setTextoFicha(event.target.value)}
-            disabled={conferindo}
+            placeholder="Cole aqui a ficha..."
+            disabled={preparando || verificando}
           />
 
           <div className="button-row">
             <button
-              className="secondary-button"
-              type="button"
-              onClick={handleInterpretarFicha}
-              disabled={conferindo}
-            >
-              Interpretar ficha
-            </button>
-
-            <button
               className="primary-button"
               type="button"
-              onClick={handleConferirLeituras}
-              disabled={conferindo}
+              onClick={prepararConferencia}
+              disabled={preparando || verificando}
             >
-              {conferindo ? "Conferindo ao vivo..." : "Conferir leituras"}
-            </button>
-
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={copiarResumo}
-              disabled={!registroTemporario || conferindo}
-            >
-              Copiar resumo
+              {preparando ? "Preparando..." : "Interpretar e revisar"}
             </button>
           </div>
         </div>
 
         <div className="panel">
           <h3>Status ao vivo</h3>
-          <StatusAoVivo statusAoVivo={statusAoVivo} conferindo={conferindo} />
+          <StatusAoVivo statusAoVivo={statusAoVivo} ativo={preparando || verificando} />
         </div>
       </div>
 
-      {fichaInterpretada ? (
+      {plano ? (
         <div className="panel">
-          <h3>Prévia da interpretação</h3>
-          <PreviewFicha fichaInterpretada={fichaInterpretada} />
+          <div className="section-title-row">
+            <div>
+              <h3>2. Confirmar dados antes de verificar</h3>
+              <p>
+                Corrija capítulos não encontrados e marque Especial ou Poesia quando
+                necessário.
+              </p>
+            </div>
+
+            <button
+              className="primary-button"
+              type="button"
+              onClick={iniciarVerificacao}
+              disabled={verificando || preparando}
+            >
+              {verificando ? "Verificando..." : "Iniciar verificação"}
+            </button>
+          </div>
+
+          <PlanoConferencia
+            plano={plano}
+            onSelecionarCapitulo={atualizarCapituloSelecionado}
+            onMudarRegra={atualizarModoRegra}
+          />
+        </div>
+      ) : null}
+
+      {resultadoConferencia ? (
+        <div className="panel">
+          <div className="section-title-row">
+            <div>
+              <h3>3. Revisar resultado antes de salvar</h3>
+              <p>
+                Aprove manualmente o que for necessário. Nada será salvo até você
+                clicar em salvar histórico.
+              </p>
+            </div>
+
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={copiarResumo}
+              >
+                Copiar resumo
+              </button>
+
+              <button
+                className="primary-button"
+                type="button"
+                onClick={salvarNoHistorico}
+                disabled={salvando}
+              >
+                {salvando ? "Salvando..." : "Salvar histórico"}
+              </button>
+            </div>
+          </div>
+
+          <ResultadoConferencia
+            resultado={resultadoConferencia}
+            onAprovarManual={abrirAprovacaoManual}
+          />
         </div>
       ) : null}
 
       {registroTemporario ? (
         <div className="panel">
-          <div className="section-title-row">
-            <div>
-              <h3>Resumo copiável</h3>
-              <p>Use o botão “Copiar resumo” para mandar o resultado no grupo.</p>
-            </div>
-          </div>
-
+          <h3>Resumo copiável</h3>
           <pre className="copy-summary-box">
             {gerarResumoConferencia(registroTemporario)}
           </pre>
         </div>
       ) : null}
 
-      {resultadoConferencia ? (
-        <ResultadoConferencia resultado={resultadoConferencia} diaSemana={diaSemana} />
+      {modalManual ? (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3>Aprovar manualmente</h3>
+
+            <p>
+              Informe o motivo para aprovar:{" "}
+              <strong>{modalManual.capitulo?.capitulo?.titulo || "capítulo"}</strong>
+            </p>
+
+            <label className="field field-full">
+              <span>Motivo obrigatório</span>
+              <textarea
+                rows="5"
+                value={motivoManual}
+                onChange={(event) => setMotivoManual(event.target.value)}
+                placeholder="Explique por que essa leitura será aprovada..."
+              />
+            </label>
+
+            <div className="form-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setModalManual(null)}
+              >
+                Cancelar
+              </button>
+
+              <button
+                className="primary-button"
+                type="button"
+                onClick={confirmarAprovacaoManual}
+              >
+                Confirmar aprovação
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );
 }
 
-function AlertaDuplicidade({
-  duplicadoDetectado,
-  salvandoDuplicado,
-  onSalvarMesmoAssim
-}) {
+function PlanoConferencia({ plano, onSelecionarCapitulo, onMudarRegra }) {
   return (
-    <div className="duplicate-alert">
-      <div>
-        <strong>
-          {duplicadoDetectado.tipo === "capitulo-duplicado"
-            ? "Capítulo duplicado detectado"
-            : "Conferência duplicada detectada"}
-        </strong>
-
-        <p>{duplicadoDetectado.mensagem}</p>
-
-        {duplicadoDetectado.registro ? (
-          <small>
-            Registro existente: {formatarDataDuplicado(duplicadoDetectado.registro.criadoEm)}
-          </small>
-        ) : null}
-
-        {duplicadoDetectado.conflitos?.length > 0 ? (
-          <div className="duplicate-conflicts">
-            {duplicadoDetectado.conflitos.map((conflito, index) => (
-              <p key={`${conflito.registro?.id || index}`}>
-                • Registro de {formatarDataDuplicado(conflito.registro?.criadoEm)} tem{" "}
-                {conflito.capitulosRepetidos.length} capítulo(s) repetido(s).
-              </p>
-            ))}
-          </div>
-        ) : null}
+    <div className="review-plan-list">
+      <div className="review-reader-card">
+        <strong>{plano.ficha.user || "User não encontrado"}</strong>
+        <span>
+          {plano.ficha.nome || "Nome não encontrado"} ·{" "}
+          {plano.ficha.sub || "Sub não encontrado"}
+        </span>
       </div>
 
-      <button
-        className="secondary-button"
-        type="button"
-        onClick={onSalvarMesmoAssim}
-        disabled={salvandoDuplicado}
-      >
-        {salvandoDuplicado ? "Salvando..." : "Salvar mesmo assim"}
-      </button>
-    </div>
-  );
-}
-
-function StatusAoVivo({ statusAoVivo, conferindo }) {
-  if (statusAoVivo.length === 0) {
-    return (
-      <div className="live-status-empty">
-        <p>Nenhuma conferência em andamento.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="live-status-box">
-      {conferindo ? (
-        <div className="live-status-running">
-          <span />
-          Conferência em andamento...
-        </div>
-      ) : null}
-
-      <div className="live-status-list">
-        {statusAoVivo.map((item) => (
-          <div className={`live-status-item ${item.tipo}`} key={item.id}>
-            <span className="live-status-dot" />
+      {plano.leituras.map((leitura) => (
+        <article className="review-work-card" key={leitura.id}>
+          <div className="review-work-header">
             <div>
-              <strong>{item.titulo}</strong>
-              <p>{item.detalhe}</p>
+              <span>Obra informada</span>
+              <h4>{leitura.leitura.obra || "Obra não informada"}</h4>
             </div>
+
+            <strong
+              className={`status-pill ${
+                leitura.statusPreparacao === "pronto"
+                  ? "success"
+                  : leitura.statusPreparacao === "ignorado"
+                    ? "neutral"
+                    : "danger"
+              }`}
+            >
+              {leitura.statusPreparacao}
+            </strong>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
-function PreviewFicha({ fichaInterpretada }) {
-  return (
-    <div className="preview-result">
-      <div className="preview-section">
-        <span>Sub</span>
-        <strong>{fichaInterpretada.sub || "Não encontrado"}</strong>
-      </div>
-
-      <div className="preview-section">
-        <span>Nome</span>
-        <strong>{fichaInterpretada.nome || "Não encontrado"}</strong>
-      </div>
-
-      <div className="preview-section">
-        <span>User</span>
-        <strong>{fichaInterpretada.user || "Não encontrado"}</strong>
-      </div>
-
-      <div className="preview-section">
-        <span>ADM</span>
-        <strong>{fichaInterpretada.adm || "Não encontrado"}</strong>
-      </div>
-
-      <div className="preview-divider" />
-
-      <h4>Leituras encontradas</h4>
-
-      {fichaInterpretada.leituras.length === 0 ? (
-        <p className="muted">Nenhuma leitura encontrada.</p>
-      ) : (
-        <div className="reading-list">
-          {fichaInterpretada.leituras.map((leitura, index) => (
-            <article className="reading-card" key={`${leitura.obra}-${index}`}>
-              <div className="reading-card-header">
-                <span>Obra {index + 1}</span>
-
-                {leitura.minhaObra ? (
-                  <strong className="status-pill neutral">Minha Obra</strong>
-                ) : (
-                  <strong className="status-pill pending">Conferir</strong>
-                )}
-              </div>
-
-              <h5>{leitura.obra || "Obra não encontrada"}</h5>
-
-              <p>
-                <strong>Capítulos informados:</strong>{" "}
-                {leitura.capitulosTexto || "Não informado"}
-              </p>
-
-              {leitura.capitulos.length > 0 ? (
-                <div className="chapter-tags">
-                  {leitura.capitulos.map((capitulo, capIndex) => (
-                    <span key={`${capitulo.texto}-${capIndex}`}>
-                      {capitulo.texto}
-                    </span>
-                  ))}
-                </div>
-              ) : leitura.minhaObra ? (
-                <p className="muted">Marcada como Minha Obra.</p>
+          {leitura.obraEncontrada ? (
+            <div className="matched-work">
+              {leitura.obraEncontrada.capaUrl ? (
+                <img
+                  src={leitura.obraEncontrada.capaUrl}
+                  alt={`Capa de ${leitura.obraEncontrada.nome}`}
+                />
               ) : (
-                <p className="form-error">
-                  Não consegui identificar os capítulos dessa obra.
-                </p>
+                <div className="cover-placeholder">📕</div>
               )}
 
-              <p>
-                <strong>Feedback:</strong>{" "}
-                {leitura.feedbackOferecido ? "Marcado ✅" : "Não marcado"}
-              </p>
-            </article>
-          ))}
-        </div>
-      )}
+              <div>
+                <strong>{leitura.obraEncontrada.nome}</strong>
+                <span>Compatibilidade: {leitura.pontuacaoObra}%</span>
+              </div>
+            </div>
+          ) : null}
+
+          {leitura.mensagens?.length ? (
+            <div className="reason-list">
+              {leitura.mensagens.map((mensagem, index) => (
+                <p key={`${mensagem}-${index}`}>• {mensagem}</p>
+              ))}
+            </div>
+          ) : null}
+
+          {leitura.capitulos.length > 0 ? (
+            <div className="review-chapters-list">
+              {leitura.capitulos.map((capitulo) => (
+                <div className="review-chapter-card" key={capitulo.id}>
+                  <div>
+                    <span>Pedido na ficha</span>
+                    <strong>
+                      {capitulo.pedido?.texto ||
+                        capitulo.pedido?.titulo ||
+                        capitulo.pedido?.numero ||
+                        "Capítulo não identificado"}
+                    </strong>
+                  </div>
+
+                  <label className="field">
+                    <span>Capítulo encontrado/selecionado</span>
+                    <select
+                      value={capitulo.capituloSelecionadoId}
+                      onChange={(event) =>
+                        onSelecionarCapitulo(
+                          leitura.id,
+                          capitulo.id,
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">Selecione manualmente</option>
+                      {leitura.capitulosDisponiveis.map((opcao) => (
+                        <option key={opcao.id} value={opcao.id}>
+                          {opcao.tipo === "prologo"
+                            ? "Prólogo"
+                            : `Cap. ${opcao.numero || opcao.ordem || "-"}`}{" "}
+                          — {opcao.titulo}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>Tipo de regra</span>
+                    <select
+                      value={capitulo.modoRegra}
+                      onChange={(event) =>
+                        onMudarRegra(leitura.id, capitulo.id, event.target.value)
+                      }
+                    >
+                      <option value="normal">Normal</option>
+                      <option value="especial">Especial — mínimo 1 comentário</option>
+                      <option value="poesia">Poesia — mínimo 3 comentários</option>
+                    </select>
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </article>
+      ))}
     </div>
   );
 }
 
-function ResultadoConferencia({ resultado, diaSemana }) {
-  const totalLeituras = resultado.resultados.length;
-  const aprovadas = resultado.resultados.filter(
-    (item) => item.status === "aprovado"
-  ).length;
-  const ignoradas = resultado.resultados.filter(
-    (item) => item.status === "ignorado"
-  ).length;
-  const reprovadas = resultado.resultados.filter(
-    (item) => item.status === "reprovado" || item.status === "erro"
-  ).length;
-
+function ResultadoConferencia({ resultado, onAprovarManual }) {
   return (
-    <div className="panel">
-      <div className="section-title-row">
-        <div>
-          <h3>Resultado da conferência</h3>
-          <p>
-            Resultado salvo em: <strong>{diaSemana || "Dia não informado"}</strong>
-          </p>
-        </div>
-      </div>
-
-      <div className="conference-summary-grid">
-        <div>
-          <span>Total de leituras</span>
-          <strong>{totalLeituras}</strong>
-        </div>
-
-        <div>
-          <span>Aprovadas</span>
-          <strong>{aprovadas}</strong>
-        </div>
-
-        <div>
-          <span>Ignoradas</span>
-          <strong>{ignoradas}</strong>
-        </div>
-
-        <div>
-          <span>Reprovadas</span>
-          <strong>{reprovadas}</strong>
-        </div>
-      </div>
-
-      <div className="conference-result-list">
-        {resultado.resultados.map((item, index) => (
-          <article
-            className={`conference-card status-${item.status}`}
-            key={`${item.leitura.obra}-${index}`}
-          >
-            <div className="conference-card-header">
-              <div>
-                <span>Leitura {index + 1}</span>
-                <h4>{item.leitura.obra || "Obra não informada"}</h4>
-              </div>
-
-              <strong className={`status-pill ${definirClasseStatus(item.status)}`}>
-                {item.statusTexto}
-              </strong>
+    <div className="conference-result-list">
+      {resultado.resultados.map((leitura, leituraIndex) => (
+        <article className={`conference-card status-${leitura.status}`} key={leituraIndex}>
+          <div className="conference-card-header">
+            <div>
+              <span>Leitura {leituraIndex + 1}</span>
+              <h4>{leitura.leitura.obra || "Obra não informada"}</h4>
             </div>
 
-            {item.obraEncontrada ? (
-              <div className="matched-work">
-                {item.obraEncontrada.capaUrl ? (
-                  <img
-                    src={item.obraEncontrada.capaUrl}
-                    alt={`Capa de ${item.obraEncontrada.nome}`}
-                  />
-                ) : (
-                  <div className="cover-placeholder">📕</div>
-                )}
+            <strong className={`status-pill ${definirClasseStatus(leitura.status)}`}>
+              {leitura.statusTexto}
+            </strong>
+          </div>
 
-                <div>
-                  <strong>{item.obraEncontrada.nome}</strong>
-                  <span>
-                    Compatibilidade: {item.pontuacaoObra}% ·{" "}
-                    {item.obraEncontrada.autor || "Autor não informado"}
-                  </span>
-                </div>
-              </div>
-            ) : null}
-
-            {item.motivos.length > 0 ? (
-              <div className="reason-list">
-                {item.motivos.map((motivo, motivoIndex) => (
-                  <p key={`${motivo}-${motivoIndex}`}>• {motivo}</p>
-                ))}
-              </div>
-            ) : null}
-
-            {item.capitulos.length > 0 ? (
-              <div className="chapter-result-list">
-                {item.capitulos.map((capituloResultado, capIndex) => (
-                  <CapituloResultado
-                    key={`${capituloResultado.pedido?.texto}-${capIndex}`}
-                    capituloResultado={capituloResultado}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </article>
-        ))}
-      </div>
+          {leitura.capitulos.map((capitulo, capituloIndex) => (
+            <CapituloResultado
+              key={`${capituloIndex}-${capitulo.capitulo?.titulo}`}
+              capituloResultado={capitulo}
+              leituraIndex={leituraIndex}
+              capituloIndex={capituloIndex}
+              onAprovarManual={onAprovarManual}
+            />
+          ))}
+        </article>
+      ))}
     </div>
   );
 }
 
-function CapituloResultado({ capituloResultado }) {
+function CapituloResultado({
+  capituloResultado,
+  leituraIndex,
+  capituloIndex,
+  onAprovarManual
+}) {
   if (!capituloResultado.encontrado) {
     return (
       <div className="chapter-result-card error">
-        <div>
-          <span>Pedido na ficha</span>
-          <strong>{capituloResultado.pedido?.texto || "Não identificado"}</strong>
-        </div>
-
-        <p>Capítulo não encontrado na obra cadastrada.</p>
+        <strong>Capítulo não encontrado</strong>
+        <p>{capituloResultado.motivos.join(" ")}</p>
       </div>
     );
   }
 
   const capitulo = capituloResultado.capitulo;
-  const tempoRealTexto = formatarTempo(
-    Math.floor((Number(capituloResultado.tempoReal.totalSegundos) || 0) / 60),
-    (Number(capituloResultado.tempoReal.totalSegundos) || 0) % 60
-  );
 
   return (
     <div className={`chapter-result-card ${capituloResultado.status}`}>
@@ -790,7 +773,7 @@ function CapituloResultado({ capituloResultado }) {
           <span>
             {capitulo.tipo === "prologo"
               ? "Prólogo"
-              : `Capítulo ${capitulo.numero}`}
+              : `Capítulo ${capitulo.numero || "-"}`}
           </span>
           <strong>{capitulo.titulo}</strong>
         </div>
@@ -802,10 +785,14 @@ function CapituloResultado({ capituloResultado }) {
 
       <div className="chapter-result-metrics">
         <div>
+          <span>Regra</span>
+          <strong>{capitulo.modoRegra || "normal"}</strong>
+        </div>
+
+        <div>
           <span>Comentários</span>
           <strong>
-            {capituloResultado.totalComentarios}/
-            {capituloResultado.comentariosMinimos}
+            {capituloResultado.totalComentarios}/{capituloResultado.comentariosMinimos}
           </strong>
         </div>
 
@@ -831,23 +818,21 @@ function CapituloResultado({ capituloResultado }) {
 
         <div>
           <span>Tempo real</span>
-          <strong>{tempoRealTexto}</strong>
-        </div>
-
-        <div>
-          <span>Palavras</span>
           <strong>
-            {(Number(capitulo.totalPalavras) || 0).toLocaleString("pt-BR")}
-          </strong>
-        </div>
-
-        <div>
-          <span>Parágrafos</span>
-          <strong>
-            {(Number(capitulo.totalParagrafos) || 0).toLocaleString("pt-BR")}
+            {formatarTempo(
+              Math.floor((capituloResultado.tempoReal.totalSegundos || 0) / 60),
+              (capituloResultado.tempoReal.totalSegundos || 0) % 60
+            )}
           </strong>
         </div>
       </div>
+
+      {capituloResultado.aprovacaoManual?.aprovado ? (
+        <div className="manual-approval-box">
+          <strong>Aprovado manualmente</strong>
+          <p>{capituloResultado.aprovacaoManual.motivo}</p>
+        </div>
+      ) : null}
 
       {capituloResultado.motivos.length > 0 ? (
         <div className="reason-list">
@@ -857,36 +842,53 @@ function CapituloResultado({ capituloResultado }) {
         </div>
       ) : null}
 
-      {capituloResultado.comentarios.length > 0 ? (
-        <details className="comments-details">
-          <summary>Ver comentários encontrados</summary>
+      {capituloResultado.status === "reprovado" ||
+      capituloResultado.status === "erro-comentarios" ? (
+        <div className="history-actions">
+          <button
+            className="mini-button primary"
+            type="button"
+            onClick={() =>
+              onAprovarManual(leituraIndex, capituloIndex, capituloResultado)
+            }
+          >
+            Aprovar manualmente
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
-          <div className="comments-list">
-            {capituloResultado.comentarios.map((comentario) => (
-              <div className="comment-item" key={comentario.id}>
-                <strong>
-                  {comentario.area.toUpperCase()} ·{" "}
-                  {comentario.data
-                    ? new Date(comentario.data).toLocaleString("pt-BR")
-                    : "Sem data"}
-                </strong>
-                <p>{comentario.texto}</p>
-              </div>
-            ))}
+function StatusAoVivo({ statusAoVivo, ativo }) {
+  if (statusAoVivo.length === 0) {
+    return (
+      <div className="live-status-empty">
+        <p>Nenhum processo iniciado.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="live-status-box">
+      {ativo ? (
+        <div className="live-status-running">
+          <span />
+          Processando...
+        </div>
+      ) : null}
+
+      <div className="live-status-list">
+        {statusAoVivo.map((item) => (
+          <div className={`live-status-item ${item.tipo}`} key={item.id}>
+            <span className="live-status-dot" />
+            <div>
+              <strong>{item.titulo}</strong>
+              <p>{item.detalhe}</p>
+            </div>
           </div>
-        </details>
-      ) : null}
-
-      {capitulo.linkWattpad ? (
-        <a
-          className="mini-button primary"
-          href={capitulo.linkWattpad}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Abrir capítulo
-        </a>
-      ) : null}
+        ))}
+      </div>
     </div>
   );
 }
@@ -900,16 +902,12 @@ function definirClasseStatus(status) {
     return "neutral";
   }
 
-  if (status === "reprovado") {
+  if (
+    status === "reprovado" ||
+    status === "erro" ||
+    status === "erro-comentarios"
+  ) {
     return "danger";
-  }
-
-  if (status === "erro" || status === "erro-comentarios") {
-    return "danger";
-  }
-
-  if (status === "parcial") {
-    return "pending";
   }
 
   return "pending";
