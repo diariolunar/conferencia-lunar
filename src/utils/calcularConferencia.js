@@ -1,4 +1,14 @@
 export function obterComentariosMinimosPorCapitulo(capitulo = {}, regra = {}) {
+  const modoRegra = capitulo.modoRegra || capitulo.tipoRegra || "normal";
+
+  if (modoRegra === "especial") {
+    return 1;
+  }
+
+  if (modoRegra === "poesia") {
+    return 3;
+  }
+
   const totalPalavras = Number(capitulo.totalPalavras) || 0;
 
   const comentariosPadrao = Number(regra.comentariosPadrao) || 6;
