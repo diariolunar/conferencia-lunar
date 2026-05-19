@@ -1441,3 +1441,85 @@
     transform: scale(0.8);
   }
 }
+
+.review-plan-list {
+  display: grid;
+  gap: 14px;
+}
+
+.review-reader-card {
+  background: var(--color-surface-strong);
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.review-reader-card strong {
+  color: var(--color-primary-dark);
+  display: block;
+  font-size: 1.2rem;
+}
+
+.review-reader-card span {
+  color: var(--color-muted);
+  display: block;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.review-work-card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 16px;
+}
+
+.review-work-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.review-work-header span {
+  color: var(--color-muted);
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.review-work-header h4 {
+  color: var(--color-primary-dark);
+  margin: 4px 0 0;
+}
+
+.review-chapters-list {
+  display: grid;
+  gap: 12px;
+}
+
+.review-chapter-card {
+  background: var(--color-surface-strong);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.1fr 1.5fr 1fr;
+  padding: 14px;
+}
+
+.review-chapter-card > div > span {
+  color: var(--color-muted);
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.review-chapter-card > div > strong {
+  color: var(--color-primary-dark);
+  display: block;
+  margin-top: 4px;
+}
