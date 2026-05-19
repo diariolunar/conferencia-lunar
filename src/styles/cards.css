@@ -1523,3 +1523,11 @@
   display: block;
   margin-top: 4px;
 }
+
+.review-add-buttons {
+  margin-bottom: 12px;
+}
+
+.remove-review-chapter {
+  margin-top: 10px;
+}
