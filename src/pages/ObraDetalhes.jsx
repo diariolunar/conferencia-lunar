@@ -22,6 +22,26 @@ const formularioInicial = {
   observacoes: ""
 };
 
+function obterDescricaoCapitulo(capitulo = {}) {
+  if (capitulo.tipo === "prologo") {
+    return "Prólogo";
+  }
+
+  if (capitulo.tipo === "extra") {
+    return "Extra";
+  }
+
+  if (capitulo.tipo === "bonus") {
+    return "Bônus";
+  }
+
+  if (capitulo.observacoes) {
+    return capitulo.observacoes;
+  }
+
+  return "";
+}
+
 export default function ObraDetalhes() {
   const { obraId } = useParams();
 
@@ -104,21 +124,26 @@ export default function ObraDetalhes() {
       return;
     }
 
-    if (formulario.tipo === "capitulo" && !String(formulario.numero).trim()) {
-      setErro("Informe o número do capítulo.");
-      return;
-    }
-
     try {
       setSalvando(true);
       setErro("");
 
+      const numeroTratado =
+        formulario.tipo === "prologo"
+          ? 0
+          : String(formulario.numero).trim()
+            ? Number(formulario.numero)
+            : null;
+
+      const ordemTratada =
+        String(formulario.ordem).trim()
+          ? Number(formulario.ordem)
+          : capituloEditando?.ordem || capitulos.length + 1;
+
       const dados = {
         ...formulario,
-        numero: formulario.tipo === "prologo" ? 0 : formulario.numero,
-        ordem:
-          formulario.ordem ||
-          (formulario.tipo === "prologo" ? 0 : formulario.numero)
+        numero: numeroTratado,
+        ordem: ordemTratada
       };
 
       if (capituloEditando) {
@@ -295,8 +320,8 @@ export default function ObraDetalhes() {
             <div>
               <h3>{capituloEditando ? "Editar capítulo" : "Novo capítulo"}</h3>
               <p>
-                Cadastre os capítulos que depois serão encontrados quando a ficha
-                disser, por exemplo, “5 e 6” ou “Prólogo e 1”.
+                O número agora é opcional. Para obras com capítulos nomeados,
+                use apenas o título.
               </p>
             </div>
 
@@ -324,12 +349,12 @@ export default function ObraDetalhes() {
             </label>
 
             <label className="field">
-              <span>Número</span>
+              <span>Número opcional</span>
               <input
                 type="number"
                 value={formulario.numero}
                 onChange={(event) => atualizarCampo("numero", event.target.value)}
-                placeholder="Ex: 5"
+                placeholder="Pode deixar vazio"
                 disabled={formulario.tipo === "prologo"}
               />
             </label>
@@ -340,7 +365,7 @@ export default function ObraDetalhes() {
                 type="text"
                 value={formulario.titulo}
                 onChange={(event) => atualizarCampo("titulo", event.target.value)}
-                placeholder="Ex: Capítulo 5"
+                placeholder="Ex: A Floresta"
               />
             </label>
 
@@ -386,7 +411,7 @@ export default function ObraDetalhes() {
                 type="number"
                 value={formulario.ordem}
                 onChange={(event) => atualizarCampo("ordem", event.target.value)}
-                placeholder="Ex: 5"
+                placeholder="Usado só para ordenar"
               />
             </label>
 
@@ -428,8 +453,8 @@ export default function ObraDetalhes() {
           <div>
             <h3>Capítulos cadastrados</h3>
             <p>
-              Esses capítulos serão usados para bater com o que vier escrito nas
-              fichas dos membros.
+              A exibição agora prioriza o título. A ordem fica apenas como dado
+              interno.
             </p>
           </div>
         </div>
@@ -458,15 +483,16 @@ export default function ObraDetalhes() {
                     Number(capitulo.totalPalavras) || 0
                   );
 
+                  const descricao = obterDescricaoCapitulo(capitulo);
+
                   return (
                     <tr key={capitulo.id}>
                       <td>
                         <strong>{capitulo.titulo}</strong>
-                        <span className="table-subtext">
-                          {capitulo.tipo === "prologo"
-                            ? "Prólogo"
-                            : `Capítulo ${capitulo.numero || "-"}`}
-                        </span>
+
+                        {descricao ? (
+                          <span className="table-subtext">{descricao}</span>
+                        ) : null}
                       </td>
 
                       <td>
