@@ -195,3 +195,9 @@
     flex-direction: column;
   }
 }
+
+@media (max-width: 900px) {
+  .review-chapter-card {
+    grid-template-columns: 1fr;
+  }
+}
