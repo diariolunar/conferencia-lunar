@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   aprovarCapituloManual,
   excluirHistoricoConferencia,
+  limparHistoricoGeral,
+  limparHistoricoPorSub,
   listarHistoricoConferencias
 } from "../services/historicoService.js";
 
@@ -11,6 +13,14 @@ import {
   formatarTempoSegundos,
   gerarResumoConferencia
 } from "../utils/gerarResumoConferencia.js";
+
+const DIAS_LEITURA = [
+  "Segunda-Feira",
+  "Terça-Feira",
+  "Quarta-Feira",
+  "Quinta-Feira",
+  "Sexta-Feira"
+];
 
 function formatarData(data) {
   try {
@@ -49,35 +59,40 @@ function agruparHistorico(registros = []) {
 
   registros.forEach((registro) => {
     const subNome = registro.subNome || "Sub não identificado";
-    const user = registro.user || "Sem user";
     const diaSemana = registro.diaSemana || "Sem dia";
+    const user = registro.user || "Sem user";
 
     if (!estrutura[subNome]) {
       estrutura[subNome] = {
         subNome,
         registros: [],
-        users: {}
+        dias: {}
       };
     }
 
     estrutura[subNome].registros.push(registro);
 
-    if (!estrutura[subNome].users[user]) {
-      estrutura[subNome].users[user] = {
-        user,
-        nome: registro.nome || "",
+    if (!estrutura[subNome].dias[diaSemana]) {
+      estrutura[subNome].dias[diaSemana] = {
+        diaSemana,
         registros: [],
-        dias: {}
+        membros: {}
       };
     }
 
-    estrutura[subNome].users[user].registros.push(registro);
+    estrutura[subNome].dias[diaSemana].registros.push(registro);
 
-    if (!estrutura[subNome].users[user].dias[diaSemana]) {
-      estrutura[subNome].users[user].dias[diaSemana] = [];
+    if (!estrutura[subNome].dias[diaSemana].membros[user]) {
+      estrutura[subNome].dias[diaSemana].membros[user] = {
+        user,
+        nome: registro.nome || "",
+        subNome,
+        diaSemana,
+        registros: []
+      };
     }
 
-    estrutura[subNome].users[user].dias[diaSemana].push(registro);
+    estrutura[subNome].dias[diaSemana].membros[user].registros.push(registro);
   });
 
   return estrutura;
@@ -125,17 +140,7 @@ function calcularEstatisticas(registros = []) {
 }
 
 function calcularPainelSemanal(registros = []) {
-  const dias = [
-    "Segunda-Feira",
-    "Terça-Feira",
-    "Quarta-Feira",
-    "Quinta-Feira",
-    "Sexta-Feira",
-    "Sábado",
-    "Domingo"
-  ];
-
-  return dias.map((dia) => {
+  return DIAS_LEITURA.map((dia) => {
     const registrosDia = registros.filter((registro) => registro.diaSemana === dia);
     const stats = calcularEstatisticas(registrosDia);
 
@@ -157,6 +162,7 @@ export default function Historico() {
   const [modalAprovacao, setModalAprovacao] = useState(null);
   const [motivoAprovacao, setMotivoAprovacao] = useState("");
   const [salvandoAprovacao, setSalvandoAprovacao] = useState(false);
+  const [limpando, setLimpando] = useState(false);
 
   useEffect(() => {
     carregarHistorico();
@@ -192,6 +198,66 @@ export default function Historico() {
     } catch (error) {
       console.error(error);
       setErro("Não consegui excluir a conferência.");
+    }
+  }
+
+  async function limparTudo() {
+    const confirmar = window.confirm(
+      "Tem certeza que deseja apagar TODO o histórico geral? Essa ação não pode ser desfeita."
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    try {
+      setLimpando(true);
+      setErro("");
+      setMensagem("");
+
+      await limparHistoricoGeral();
+
+      setMembroSelecionado(null);
+      setSubSelecionado("");
+      setMensagem("Histórico geral limpo com sucesso.");
+      await carregarHistorico();
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui limpar o histórico geral.");
+    } finally {
+      setLimpando(false);
+    }
+  }
+
+  async function limparSubAtual() {
+    if (!subSelecionado) {
+      setErro("Selecione um sub para limpar somente o histórico dele.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Tem certeza que deseja apagar todo o histórico do sub "${subSelecionado}"? Essa ação não pode ser desfeita.`
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    try {
+      setLimpando(true);
+      setErro("");
+      setMensagem("");
+
+      await limparHistoricoPorSub(subSelecionado);
+
+      setMembroSelecionado(null);
+      setMensagem(`Histórico do sub "${subSelecionado}" limpo com sucesso.`);
+      await carregarHistorico();
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui limpar o histórico do sub.");
+    } finally {
+      setLimpando(false);
     }
   }
 
@@ -302,9 +368,29 @@ export default function Historico() {
           <h2>Histórico</h2>
         </div>
 
-        <button className="secondary-button" type="button" onClick={carregarHistorico}>
-          Atualizar
-        </button>
+        <div className="button-row">
+          <button className="secondary-button" type="button" onClick={carregarHistorico}>
+            Atualizar
+          </button>
+
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={limparSubAtual}
+            disabled={limpando || !subSelecionado}
+          >
+            Limpar sub
+          </button>
+
+          <button
+            className="mini-button danger"
+            type="button"
+            onClick={limparTudo}
+            disabled={limpando}
+          >
+            Limpar geral
+          </button>
+        </div>
       </div>
 
       {erro ? <p className="form-error">{erro}</p> : null}
@@ -323,7 +409,7 @@ export default function Historico() {
         <div className="section-title-row">
           <div>
             <h3>Painel semanal</h3>
-            <p>Resumo das conferências separadas por dia da semana.</p>
+            <p>Resumo das conferências de segunda a sexta.</p>
           </div>
         </div>
 
@@ -378,7 +464,7 @@ export default function Historico() {
       </div>
 
       {membroSelecionado ? (
-        <TelaMembro
+        <TelaMembroDia
           membro={membroSelecionado}
           onVoltar={() => setMembroSelecionado(null)}
           onExcluir={excluirRegistro}
@@ -478,27 +564,59 @@ function SubHistorico({ sub, onAbrirMembro }) {
         </div>
       </summary>
 
-      <div className="member-grid">
-        {Object.values(sub.users).map((membro) => {
-          const membroStats = calcularEstatisticas(membro.registros);
+      <div className="member-days-list">
+        {DIAS_LEITURA.map((dia) => {
+          const blocoDia = sub.dias[dia] || {
+            diaSemana: dia,
+            registros: [],
+            membros: {}
+          };
+
+          const statsDia = calcularEstatisticas(blocoDia.registros);
 
           return (
-            <button
-              className="member-card"
-              type="button"
-              key={membro.user}
-              onClick={() => onAbrirMembro({ ...membro, subNome: sub.subNome })}
-            >
-              <span>User</span>
-              <strong>{membro.user}</strong>
-              <small>{membro.nome || "Nome não informado"}</small>
+            <details className="history-day-block" key={dia} open>
+              <summary>
+                <div>
+                  <span>Dia</span>
+                  <strong>{dia}</strong>
+                  <small>
+                    {statsDia.membros} membro(s) · {statsDia.total} conferência(s)
+                  </small>
+                </div>
+              </summary>
 
-              <div className="member-card-metrics">
-                <em>{membroStats.total} conf.</em>
-                <em>{membroStats.aprovados} ✅</em>
-                <em>{membroStats.reprovados} ❌</em>
-              </div>
-            </button>
+              {blocoDia.registros.length === 0 ? (
+                <div className="empty-state compact">
+                  <p>Nenhuma leitura registrada nesse dia.</p>
+                </div>
+              ) : (
+                <div className="member-grid">
+                  {Object.values(blocoDia.membros).map((membro) => {
+                    const membroStats = calcularEstatisticas(membro.registros);
+
+                    return (
+                      <button
+                        className="member-card"
+                        type="button"
+                        key={`${dia}-${membro.user}`}
+                        onClick={() => onAbrirMembro(membro)}
+                      >
+                        <span>User</span>
+                        <strong>{membro.user}</strong>
+                        <small>{membro.nome || "Nome não informado"}</small>
+
+                        <div className="member-card-metrics">
+                          <em>{membroStats.total} conf.</em>
+                          <em>{membroStats.aprovados} ✅</em>
+                          <em>{membroStats.reprovados} ❌</em>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </details>
           );
         })}
       </div>
@@ -506,17 +624,18 @@ function SubHistorico({ sub, onAbrirMembro }) {
   );
 }
 
-function TelaMembro({ membro, onVoltar, onExcluir, onCopiarResumo, onAprovarManual }) {
+function TelaMembroDia({ membro, onVoltar, onExcluir, onCopiarResumo, onAprovarManual }) {
   const stats = calcularEstatisticas(membro.registros);
-  const painel = calcularPainelSemanal(membro.registros);
 
   return (
     <div className="panel member-detail-panel">
       <div className="member-detail-header">
         <div>
-          <p className="eyebrow">Tela individual do membro</p>
+          <p className="eyebrow">Leituras do dia</p>
           <h3>{membro.user}</h3>
-          <span>{membro.nome || "Nome não informado"} · {membro.subNome}</span>
+          <span>
+            {membro.nome || "Nome não informado"} · {membro.subNome} · {membro.diaSemana}
+          </span>
         </div>
 
         <button className="secondary-button" type="button" onClick={onVoltar}>
@@ -531,39 +650,15 @@ function TelaMembro({ membro, onVoltar, onExcluir, onCopiarResumo, onAprovarManu
         <ResumoCard titulo="Comentários" valor={stats.comentarios} />
       </div>
 
-      <div className="weekly-panel">
-        {painel.map((dia) => (
-          <div className="weekly-day-card" key={dia.dia}>
-            <strong>{dia.dia}</strong>
-            <span>{dia.total} conferência(s)</span>
-            <small>{dia.aprovados} aprovadas · {dia.reprovados} reprovadas</small>
-          </div>
-        ))}
-      </div>
-
-      <div className="member-days-list">
-        {Object.entries(membro.dias).map(([diaSemana, registros]) => (
-          <details className="history-day-block" key={diaSemana} open>
-            <summary>
-              <div>
-                <span>Dia</span>
-                <strong>{diaSemana}</strong>
-                <small>{registros.length} conferência(s)</small>
-              </div>
-            </summary>
-
-            <div className="history-records">
-              {registros.map((registro) => (
-                <RegistroHistorico
-                  key={registro.id}
-                  registro={registro}
-                  onExcluir={() => onExcluir(registro.id)}
-                  onCopiarResumo={() => onCopiarResumo(registro)}
-                  onAprovarManual={onAprovarManual}
-                />
-              ))}
-            </div>
-          </details>
+      <div className="history-records">
+        {membro.registros.map((registro) => (
+          <RegistroHistorico
+            key={registro.id}
+            registro={registro}
+            onExcluir={() => onExcluir(registro.id)}
+            onCopiarResumo={() => onCopiarResumo(registro)}
+            onAprovarManual={onAprovarManual}
+          />
         ))}
       </div>
     </div>
@@ -688,7 +783,7 @@ function CapituloHistorico({
     <div className={`history-chapter-card status-${capitulo.status}`}>
       <div className="history-chapter-header">
         <div>
-          <span>{capitulo.tipo === "prologo" ? "Prólogo" : `Capítulo ${capitulo.numero || "-"}`}</span>
+          <span>{capitulo.tipo === "prologo" ? "Prólogo" : "Capítulo"}</span>
           <strong>{capitulo.titulo || "Capítulo não encontrado"}</strong>
         </div>
 
@@ -698,6 +793,11 @@ function CapituloHistorico({
       </div>
 
       <div className="history-chapter-metrics">
+        <div>
+          <span>Regra</span>
+          <strong>{capitulo.modoRegra || "normal"}</strong>
+        </div>
+
         <div>
           <span>Comentários</span>
           <strong>{capitulo.totalComentarios || 0}/{capitulo.comentariosMinimos || 0}</strong>
