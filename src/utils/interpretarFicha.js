@@ -5,8 +5,9 @@ const PALAVRAS_OBRA = [
   "obra",
   "livro",
   "mundo",
-  "tomo",
   "historia",
+  "história",
+  "tomo",
   "leitura",
   "volume",
   "conto",
@@ -17,8 +18,11 @@ const PALAVRAS_OBRA = [
 
 const PALAVRAS_CAPITULOS = [
   "capitulos lidos",
+  "capítulos lidos",
   "capitulos",
+  "capítulos",
   "capitulo",
+  "capítulo",
   "caps",
   "cap",
   "lidos",
@@ -207,8 +211,36 @@ function criarCapituloPorTexto(texto = "") {
   };
 }
 
+function expandirIntervalos(texto = "") {
+  let resultado = limparTextoCapitulo(texto);
+
+  resultado = resultado.replace(
+    /(?:cap[ií]tulos?\s*)?(?:do\s*)?(\d+)\s*(?:ao|a|até|-|–|—)\s*(\d+)/gi,
+    (_, inicio, fim) => {
+      const primeiro = Number(inicio);
+      const ultimo = Number(fim);
+
+      if (!Number.isFinite(primeiro) || !Number.isFinite(ultimo)) {
+        return _;
+      }
+
+      const menor = Math.min(primeiro, ultimo);
+      const maior = Math.max(primeiro, ultimo);
+      const numeros = [];
+
+      for (let numero = menor; numero <= maior; numero += 1) {
+        numeros.push(String(numero));
+      }
+
+      return numeros.join(", ");
+    }
+  );
+
+  return resultado;
+}
+
 function dividirCapitulosTexto(texto = "") {
-  const original = limparTextoCapitulo(texto);
+  const original = expandirIntervalos(texto);
 
   if (!original) {
     return [];
