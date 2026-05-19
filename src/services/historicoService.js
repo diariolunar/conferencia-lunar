@@ -9,7 +9,8 @@ import {
   query,
   serverTimestamp,
   updateDoc,
-  where
+  where,
+  writeBatch
 } from "firebase/firestore";
 
 import { db } from "../firebase/config.js";
@@ -113,6 +114,7 @@ function resumirCapitulo(capituloResultado = {}) {
     titulo: capitulo.titulo || "",
     numero: capitulo.numero ?? null,
     tipo: capitulo.tipo || "",
+    modoRegra: capitulo.modoRegra || "normal",
     linkWattpad: capitulo.linkWattpad || "",
     totalPalavras: Number(capitulo.totalPalavras) || 0,
     totalParagrafos: Number(capitulo.totalParagrafos) || 0,
@@ -377,11 +379,11 @@ export async function salvarHistoricoConferencia({
   return addDoc(historicoRef, registro);
 }
 
-export async function listarHistoricoConferencias(quantidade = 300) {
+export async function listarHistoricoConferencias(quantidade = 500) {
   const q = query(
     historicoRef,
     orderBy("criadoEm", "desc"),
-    limit(Number(quantidade) || 300)
+    limit(Number(quantidade) || 500)
   );
 
   const snapshot = await getDocs(q);
@@ -395,6 +397,33 @@ export async function listarHistoricoConferencias(quantidade = 300) {
 export async function excluirHistoricoConferencia(id) {
   const ref = doc(db, "historicoConferencias", id);
   return deleteDoc(ref);
+}
+
+export async function limparHistoricoGeral() {
+  const snapshot = await getDocs(historicoRef);
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((documento) => {
+    batch.delete(documento.ref);
+  });
+
+  await batch.commit();
+}
+
+export async function limparHistoricoPorSub(subNome = "") {
+  if (!subNome) {
+    throw new Error("Informe o sub.");
+  }
+
+  const q = query(historicoRef, where("subNome", "==", subNome));
+  const snapshot = await getDocs(q);
+  const batch = writeBatch(db);
+
+  snapshot.docs.forEach((documento) => {
+    batch.delete(documento.ref);
+  });
+
+  await batch.commit();
 }
 
 export async function aprovarCapituloManual({
@@ -431,6 +460,7 @@ export async function aprovarCapituloManual({
     motivo: motivo.trim(),
     data: new Date().toISOString()
   };
+  capitulo.motivos = [];
 
   leitura.capitulos[capituloIndex] = capitulo;
 
@@ -444,6 +474,7 @@ export async function aprovarCapituloManual({
   if (!aindaTemReprovado) {
     leitura.status = "aprovado";
     leitura.statusTexto = "Leitura aprovada";
+    leitura.motivos = [];
   }
 
   leituras[leituraIndex] = leitura;
