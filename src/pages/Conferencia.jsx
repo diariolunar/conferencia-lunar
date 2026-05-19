@@ -810,10 +810,7 @@ function PlanoConferencia({
                       <option value="">Selecione manualmente</option>
                       {leitura.capitulosDisponiveis.map((opcao) => (
                         <option key={opcao.id} value={opcao.id}>
-                          {opcao.tipo === "prologo"
-                            ? "Prólogo"
-                            : `Cap. ${opcao.numero || opcao.ordem || "-"}`}{" "}
-                          — {opcao.titulo}
+                          {opcao.titulo}
                         </option>
                       ))}
                     </select>
