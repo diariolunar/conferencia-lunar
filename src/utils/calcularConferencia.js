@@ -43,6 +43,10 @@ export function calcularConferenciaCapitulo({
   tempoRealSegundos = 0,
   tempoEstimadoSegundos = 0
 }) {
+  const modoRegra = capitulo.modoRegra || capitulo.tipoRegra || "normal";
+  const regraEspecialOuPoesia =
+    modoRegra === "especial" || modoRegra === "poesia";
+
   const comentariosMinimos = obterComentariosMinimosPorCapitulo(capitulo, regra);
 
   const regraFinal = {
@@ -83,7 +87,7 @@ export function calcularConferenciaCapitulo({
     );
   }
 
-  if (regraFinal.exigirDistribuicao) {
+  if (!regraEspecialOuPoesia && regraFinal.exigirDistribuicao) {
     if (distribuicao.inicio < Number(regraFinal.minimoInicio || 0)) {
       motivos.push("Faltou comentário suficiente no início.");
     }
@@ -106,6 +110,7 @@ export function calcularConferenciaCapitulo({
     Number(tempoRealSegundos) || Number(capitulo.tempoRealSegundos) || 0;
 
   if (
+    !regraEspecialOuPoesia &&
     regraFinal.exigirTempoMinimo &&
     tempoEstimado > 0 &&
     tempoReal > 0 &&
