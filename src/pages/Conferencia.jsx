@@ -17,6 +17,14 @@ const DIAS_SEMANA = [
   "Domingo"
 ];
 
+function criarId() {
+  if (crypto?.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function definirStatusGeral(resultados = []) {
   if (!resultados.length) {
     return "sem-resultados";
@@ -240,6 +248,74 @@ export default function Conferencia() {
                 modoRegra
               };
             })
+          };
+        })
+      };
+    });
+  }
+
+  function adicionarCapituloNaLeitura(leituraId, modoRegraInicial = "normal") {
+    setPlano((estadoAtual) => {
+      if (!estadoAtual) {
+        return estadoAtual;
+      }
+
+      return {
+        ...estadoAtual,
+        leituras: estadoAtual.leituras.map((leitura) => {
+          if (leitura.id !== leituraId) {
+            return leitura;
+          }
+
+          return {
+            ...leitura,
+            capitulos: [
+              ...leitura.capitulos,
+              {
+                id: criarId(),
+                pedido: {
+                  tipo: "manual",
+                  numero: null,
+                  texto:
+                    modoRegraInicial === "especial"
+                      ? "Especial adicionado manualmente"
+                      : "Capítulo adicionado manualmente",
+                  titulo:
+                    modoRegraInicial === "especial"
+                      ? "Especial adicionado manualmente"
+                      : "Capítulo adicionado manualmente"
+                },
+                capituloSelecionadoId: "",
+                capituloSelecionado: null,
+                modoRegra: modoRegraInicial,
+                encontrado: false,
+                manual: true
+              }
+            ]
+          };
+        })
+      };
+    });
+  }
+
+  function removerCapituloDaLeitura(leituraId, capituloId) {
+    setPlano((estadoAtual) => {
+      if (!estadoAtual) {
+        return estadoAtual;
+      }
+
+      return {
+        ...estadoAtual,
+        leituras: estadoAtual.leituras.map((leitura) => {
+          if (leitura.id !== leituraId) {
+            return leitura;
+          }
+
+          return {
+            ...leitura,
+            capitulos: leitura.capitulos.filter(
+              (capitulo) => capitulo.id !== capituloId
+            )
           };
         })
       };
@@ -485,8 +561,8 @@ export default function Conferencia() {
             <div>
               <h3>2. Confirmar dados antes de verificar</h3>
               <p>
-                Corrija capítulos não encontrados e marque Especial ou Poesia quando
-                necessário.
+                Corrija capítulos não encontrados, adicione capítulos que faltaram
+                e marque Normal, Especial ou Poesia.
               </p>
             </div>
 
@@ -504,6 +580,8 @@ export default function Conferencia() {
             plano={plano}
             onSelecionarCapitulo={atualizarCapituloSelecionado}
             onMudarRegra={atualizarModoRegra}
+            onAdicionarCapitulo={adicionarCapituloNaLeitura}
+            onRemoverCapitulo={removerCapituloDaLeitura}
           />
         </div>
       ) : null}
@@ -599,7 +677,13 @@ export default function Conferencia() {
   );
 }
 
-function PlanoConferencia({ plano, onSelecionarCapitulo, onMudarRegra }) {
+function PlanoConferencia({
+  plano,
+  onSelecionarCapitulo,
+  onMudarRegra,
+  onAdicionarCapitulo,
+  onRemoverCapitulo
+}) {
   return (
     <div className="review-plan-list">
       <div className="review-reader-card">
@@ -657,6 +741,34 @@ function PlanoConferencia({ plano, onSelecionarCapitulo, onMudarRegra }) {
             </div>
           ) : null}
 
+          {leitura.obraEncontrada ? (
+            <div className="button-row review-add-buttons">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onAdicionarCapitulo(leitura.id, "normal")}
+              >
+                + Adicionar capítulo
+              </button>
+
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onAdicionarCapitulo(leitura.id, "especial")}
+              >
+                + Adicionar especial
+              </button>
+
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onAdicionarCapitulo(leitura.id, "poesia")}
+              >
+                + Adicionar poesia
+              </button>
+            </div>
+          ) : null}
+
           {leitura.capitulos.length > 0 ? (
             <div className="review-chapters-list">
               {leitura.capitulos.map((capitulo) => (
@@ -669,6 +781,18 @@ function PlanoConferencia({ plano, onSelecionarCapitulo, onMudarRegra }) {
                         capitulo.pedido?.numero ||
                         "Capítulo não identificado"}
                     </strong>
+
+                    {capitulo.manual ? (
+                      <button
+                        className="mini-button danger remove-review-chapter"
+                        type="button"
+                        onClick={() =>
+                          onRemoverCapitulo(leitura.id, capitulo.id)
+                        }
+                      >
+                        Remover
+                      </button>
+                    ) : null}
                   </div>
 
                   <label className="field">
