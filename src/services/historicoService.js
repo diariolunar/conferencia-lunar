@@ -399,31 +399,53 @@ export async function excluirHistoricoConferencia(id) {
   return deleteDoc(ref);
 }
 
-export async function limparHistoricoGeral() {
-  const snapshot = await getDocs(historicoRef);
-  const batch = writeBatch(db);
+async function apagarSnapshotEmLotes(snapshot) {
+  if (snapshot.empty) {
+    return 0;
+  }
 
-  snapshot.docs.forEach((documento) => {
-    batch.delete(documento.ref);
-  });
+  const docs = snapshot.docs;
+  let totalApagado = 0;
 
-  await batch.commit();
+  for (let inicio = 0; inicio < docs.length; inicio += 450) {
+    const batch = writeBatch(db);
+    const fatia = docs.slice(inicio, inicio + 450);
+
+    fatia.forEach((documento) => {
+      batch.delete(documento.ref);
+    });
+
+    await batch.commit();
+    totalApagado += fatia.length;
+  }
+
+  return totalApagado;
 }
 
-export async function limparHistoricoPorSub(subNome = "") {
-  if (!subNome) {
+export async function limparHistoricoGeral() {
+  const snapshot = await getDocs(historicoRef);
+  return apagarSnapshotEmLotes(snapshot);
+}
+
+export async function limparHistoricoPorSub({ subId = "", subNome = "" } = {}) {
+  if (!subId && !subNome) {
     throw new Error("Informe o sub.");
   }
 
-  const q = query(historicoRef, where("subNome", "==", subNome));
-  const snapshot = await getDocs(q);
-  const batch = writeBatch(db);
+  if (subId) {
+    const qPorId = query(historicoRef, where("subId", "==", subId));
+    const snapshotPorId = await getDocs(qPorId);
+    const totalPorId = await apagarSnapshotEmLotes(snapshotPorId);
 
-  snapshot.docs.forEach((documento) => {
-    batch.delete(documento.ref);
-  });
+    if (totalPorId > 0) {
+      return totalPorId;
+    }
+  }
 
-  await batch.commit();
+  const qPorNome = query(historicoRef, where("subNome", "==", subNome));
+  const snapshotPorNome = await getDocs(qPorNome);
+
+  return apagarSnapshotEmLotes(snapshotPorNome);
 }
 
 export async function aprovarCapituloManual({
