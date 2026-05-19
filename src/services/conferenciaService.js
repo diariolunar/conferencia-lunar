@@ -31,17 +31,9 @@ function calcularSemelhanca(textoA = "", textoB = "") {
   const a = limparParaComparacao(textoA);
   const b = limparParaComparacao(textoB);
 
-  if (!a || !b) {
-    return 0;
-  }
-
-  if (a === b) {
-    return 100;
-  }
-
-  if (a.includes(b) || b.includes(a)) {
-    return 85;
-  }
+  if (!a || !b) return 0;
+  if (a === b) return 100;
+  if (a.includes(b) || b.includes(a)) return 85;
 
   const palavrasA = new Set(a.split(" ").filter(Boolean));
   const palavrasB = new Set(b.split(" ").filter(Boolean));
@@ -49,16 +41,12 @@ function calcularSemelhanca(textoA = "", textoB = "") {
   let iguais = 0;
 
   palavrasA.forEach((palavra) => {
-    if (palavrasB.has(palavra)) {
-      iguais += 1;
-    }
+    if (palavrasB.has(palavra)) iguais += 1;
   });
 
   const total = Math.max(palavrasA.size, palavrasB.size);
 
-  if (total === 0) {
-    return 0;
-  }
+  if (total === 0) return 0;
 
   return Math.round((iguais / total) * 100);
 }
@@ -106,9 +94,7 @@ function limparTituloCapitulo(titulo = "") {
 function encontrarCapituloPorTitulo(textoPedido = "", capitulos = []) {
   const pedidoLimpo = limparTituloCapitulo(textoPedido);
 
-  if (!pedidoLimpo) {
-    return null;
-  }
+  if (!pedidoLimpo) return null;
 
   let melhorCapitulo = null;
   let melhorPontuacao = 0;
@@ -123,17 +109,13 @@ function encontrarCapituloPorTitulo(textoPedido = "", capitulos = []) {
     }
   });
 
-  if (melhorPontuacao >= 70) {
-    return melhorCapitulo;
-  }
+  if (melhorPontuacao >= 70) return melhorCapitulo;
 
   return null;
 }
 
 function encontrarCapituloPedido(capituloPedido, capitulos = []) {
-  if (!capituloPedido) {
-    return null;
-  }
+  if (!capituloPedido) return null;
 
   const textoPedido =
     capituloPedido.texto ||
@@ -160,9 +142,7 @@ function encontrarCapituloPedido(capituloPedido, capitulos = []) {
       capitulos.find((capitulo) => Number(capitulo.ordem) === numeroPedido) ||
       null;
 
-    if (porNumero) {
-      return porNumero;
-    }
+    if (porNumero) return porNumero;
   }
 
   return encontrarCapituloPorTitulo(textoPedido, capitulos);
@@ -374,13 +354,35 @@ async function verificarCapituloDoPlano({
     };
   }
 
-  const resultado = calcularConferenciaCapitulo({
+  let resultado = calcularConferenciaCapitulo({
     comentarios: dadosComentarios.comentarios,
     capitulo: capituloComRegra,
     regra,
     tempoRealSegundos: dadosComentarios.tempoReal.totalSegundos,
     tempoEstimadoSegundos: tempoEstimado.totalSegundos
   });
+
+  if (capituloComRegra.modoRegra === "especial") {
+    resultado = {
+      ...resultado,
+      status: dadosComentarios.totalDoUsuario >= 1 ? "aprovado" : "reprovado",
+      motivos:
+        dadosComentarios.totalDoUsuario >= 1
+          ? []
+          : ["Especial precisa ter pelo menos 1 comentário."]
+    };
+  }
+
+  if (capituloComRegra.modoRegra === "poesia") {
+    resultado = {
+      ...resultado,
+      status: dadosComentarios.totalDoUsuario >= 3 ? "aprovado" : "reprovado",
+      motivos:
+        dadosComentarios.totalDoUsuario >= 3
+          ? []
+          : ["Poesia precisa ter pelo menos 3 comentários."]
+    };
+  }
 
   avisarStatus(onStatus, {
     tipo: resultado.status === "aprovado" ? "sucesso" : "erro",
