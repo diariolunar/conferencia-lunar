@@ -98,7 +98,6 @@ function limparTituloCapitulo(titulo = "") {
     .replace(/\bparte\b/g, "")
     .replace(/\bepisodio\b/g, "")
     .replace(/\bep\b/g, "")
-    .replace(/\bn\s*\d+\b/g, "")
     .replace(/\b\d+\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -169,29 +168,134 @@ function encontrarCapituloPedido(capituloPedido, capitulos = []) {
   return encontrarCapituloPorTitulo(textoPedido, capitulos);
 }
 
-async function montarResumoCapitulo({
-  capituloPedido,
-  capituloEncontrado,
+export async function prepararPlanoConferencia(textoFicha, opcoes = {}) {
+  const { onStatus } = opcoes;
+
+  avisarStatus(onStatus, {
+    tipo: "andamento",
+    titulo: "Interpretando ficha",
+    detalhe: "Lendo sub, user, obras e capítulos."
+  });
+
+  const ficha = interpretarFicha(textoFicha);
+
+  avisarStatus(onStatus, {
+    tipo: "sucesso",
+    titulo: "Ficha interpretada",
+    detalhe: `${ficha.user || "User não encontrado"} · ${ficha.leituras.length} leitura(s).`
+  });
+
+  const regra = await buscarRegraPadrao();
+  const obras = await listarObras();
+
+  const leituras = [];
+
+  for (const leitura of ficha.leituras) {
+    if (leitura.minhaObra && regra.ignorarMinhaObra !== false) {
+      leituras.push({
+        id: crypto.randomUUID(),
+        leitura,
+        minhaObra: true,
+        obraEncontrada: null,
+        pontuacaoObra: 0,
+        capitulosDisponiveis: [],
+        capitulos: [],
+        statusPreparacao: "ignorado",
+        mensagens: ["Minha Obra — será ignorada."]
+      });
+
+      continue;
+    }
+
+    const buscaObra = encontrarObraPorNome(leitura.obra, obras);
+
+    if (!buscaObra.obra) {
+      leituras.push({
+        id: crypto.randomUUID(),
+        leitura,
+        minhaObra: false,
+        obraEncontrada: null,
+        pontuacaoObra: buscaObra.pontuacao,
+        capitulosDisponiveis: [],
+        capitulos: leitura.capitulos.map((capituloPedido) => ({
+          id: crypto.randomUUID(),
+          pedido: capituloPedido,
+          capituloSelecionadoId: "",
+          capituloSelecionado: null,
+          modoRegra: "normal",
+          encontrado: false
+        })),
+        statusPreparacao: "obra-nao-encontrada",
+        mensagens: ["Obra não encontrada no cadastro."]
+      });
+
+      continue;
+    }
+
+    const capitulosDisponiveis = await listarCapitulos(buscaObra.obra.id);
+
+    const capitulos = leitura.capitulos.map((capituloPedido) => {
+      const capituloEncontrado = encontrarCapituloPedido(
+        capituloPedido,
+        capitulosDisponiveis
+      );
+
+      return {
+        id: crypto.randomUUID(),
+        pedido: capituloPedido,
+        capituloSelecionadoId: capituloEncontrado?.id || "",
+        capituloSelecionado: capituloEncontrado || null,
+        modoRegra: "normal",
+        encontrado: Boolean(capituloEncontrado)
+      };
+    });
+
+    const faltando = capitulos.some((item) => !item.encontrado);
+
+    leituras.push({
+      id: crypto.randomUUID(),
+      leitura,
+      minhaObra: false,
+      obraEncontrada: buscaObra.obra,
+      pontuacaoObra: buscaObra.pontuacao,
+      capitulosDisponiveis,
+      capitulos,
+      statusPreparacao: faltando ? "pendente" : "pronto",
+      mensagens: faltando
+        ? ["Um ou mais capítulos precisam ser selecionados manualmente."]
+        : ["Obra e capítulos encontrados."]
+    });
+  }
+
+  avisarStatus(onStatus, {
+    tipo: "sucesso",
+    titulo: "Plano preparado",
+    detalhe: "Revise os dados antes de iniciar a verificação."
+  });
+
+  return {
+    ficha,
+    regra,
+    leituras
+  };
+}
+
+async function verificarCapituloDoPlano({
+  itemCapitulo,
   regra,
   usuario,
   leitura,
   onStatus
 }) {
-  if (!capituloEncontrado) {
-    avisarStatus(onStatus, {
-      tipo: "erro",
-      titulo: "Capítulo não encontrado",
-      detalhe: `${leitura?.obra || "Obra"} — ${
-        capituloPedido?.texto || "Capítulo não identificado"
-      }`
-    });
+  const capitulo = itemCapitulo.capituloSelecionado;
 
+  if (!capitulo) {
     return {
       encontrado: false,
-      pedido: capituloPedido,
+      pedido: itemCapitulo.pedido,
       capitulo: null,
       status: "capitulo-nao-encontrado",
-      statusTexto: "Capítulo não encontrado",
+      statusTexto: "Capítulo não selecionado",
       comentariosMinimos: 0,
       totalComentarios: 0,
       distribuicao: {
@@ -212,76 +316,43 @@ async function montarResumoCapitulo({
         fim: "",
         totalSegundos: 0
       },
-      motivos: ["Esse capítulo não foi encontrado na obra cadastrada."]
+      motivos: ["Nenhum capítulo foi selecionado para essa leitura."]
     };
   }
 
+  const capituloComRegra = {
+    ...capitulo,
+    modoRegra: itemCapitulo.modoRegra || "normal"
+  };
+
   avisarStatus(onStatus, {
     tipo: "andamento",
-    titulo: "Calculando regras do capítulo",
-    detalhe: `${capituloEncontrado.titulo} · ${
-      capituloEncontrado.totalPalavras || 0
-    } palavras`
+    titulo: "Buscando comentários",
+    detalhe: `${usuario} em ${capituloComRegra.titulo}`
   });
 
   const tempoEstimado = estimarTempoLeitura(
-    Number(capituloEncontrado.totalPalavras) || 0,
+    Number(capituloComRegra.totalPalavras) || 0,
     Number(regra.palavrasPorMinuto) || 250
   );
 
   const comentariosMinimos = obterComentariosMinimosPorCapitulo(
-    capituloEncontrado,
+    capituloComRegra,
     regra
   );
 
-  let dadosComentarios = {
-    totalDoUsuario: 0,
-    distribuicao: {
-      inicio: 0,
-      meio: 0,
-      fim: 0,
-      semArea: 0
-    },
-    tempoReal: {
-      inicio: "",
-      fim: "",
-      totalSegundos: 0
-    },
-    comentarios: []
-  };
+  let dadosComentarios;
 
   try {
-    avisarStatus(onStatus, {
-      tipo: "andamento",
-      titulo: "Buscando comentários no Wattpad",
-      detalhe: `${usuario} em ${capituloEncontrado.titulo}`
-    });
-
     dadosComentarios = await buscarComentariosDoCapitulo({
-      linkCapitulo: capituloEncontrado.linkWattpad,
+      linkCapitulo: capituloComRegra.linkWattpad,
       usuario
     });
-
-    avisarStatus(onStatus, {
-      tipo: "sucesso",
-      titulo: "Comentários encontrados",
-      detalhe: `${capituloEncontrado.titulo}: ${
-        dadosComentarios.totalDoUsuario || 0
-      } comentário(s) de ${usuario}`
-    });
   } catch (error) {
-    avisarStatus(onStatus, {
-      tipo: "erro",
-      titulo: "Erro ao buscar comentários",
-      detalhe: `${capituloEncontrado.titulo}: ${
-        error.message || "erro desconhecido"
-      }`
-    });
-
     return {
       encontrado: true,
-      pedido: capituloPedido,
-      capitulo: capituloEncontrado,
+      pedido: itemCapitulo.pedido,
+      capitulo: capituloComRegra,
       status: "erro-comentarios",
       statusTexto: "Erro ao buscar comentários",
       comentariosMinimos,
@@ -299,21 +370,13 @@ async function montarResumoCapitulo({
         fim: "",
         totalSegundos: 0
       },
-      motivos: [
-        error.message || "Não consegui buscar os comentários desse capítulo."
-      ]
+      motivos: [error.message || "Não consegui buscar os comentários."]
     };
   }
 
-  avisarStatus(onStatus, {
-    tipo: "andamento",
-    titulo: "Aplicando regras",
-    detalhe: `${capituloEncontrado.titulo}: mínimo ${comentariosMinimos} comentário(s)`
-  });
-
   const resultado = calcularConferenciaCapitulo({
     comentarios: dadosComentarios.comentarios,
-    capitulo: capituloEncontrado,
+    capitulo: capituloComRegra,
     regra,
     tempoRealSegundos: dadosComentarios.tempoReal.totalSegundos,
     tempoEstimadoSegundos: tempoEstimado.totalSegundos
@@ -325,16 +388,13 @@ async function montarResumoCapitulo({
       resultado.status === "aprovado"
         ? "Capítulo aprovado"
         : "Capítulo reprovado",
-    detalhe:
-      resultado.status === "aprovado"
-        ? `${capituloEncontrado.titulo} passou nas regras.`
-        : `${capituloEncontrado.titulo}: ${resultado.motivos.join(" ")}`
+    detalhe: `${capituloComRegra.titulo}: ${dadosComentarios.totalDoUsuario} comentário(s).`
   });
 
   return {
     encontrado: true,
-    pedido: capituloPedido,
-    capitulo: capituloEncontrado,
+    pedido: itemCapitulo.pedido,
+    capitulo: capituloComRegra,
     status: resultado.status,
     statusTexto:
       resultado.status === "aprovado"
@@ -350,69 +410,21 @@ async function montarResumoCapitulo({
   };
 }
 
-export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
+export async function verificarPlanoConferencia(plano, opcoes = {}) {
   const { onStatus } = opcoes;
 
   avisarStatus(onStatus, {
     tipo: "andamento",
-    titulo: "Interpretando ficha",
-    detalhe: "Lendo user, sub, obras e capítulos informados."
-  });
-
-  const ficha = interpretarFicha(textoFicha);
-
-  avisarStatus(onStatus, {
-    tipo: "sucesso",
-    titulo: "Ficha interpretada",
-    detalhe: `${ficha.user || "User não encontrado"} · ${
-      ficha.leituras.length
-    } leitura(s) encontrada(s).`
-  });
-
-  avisarStatus(onStatus, {
-    tipo: "andamento",
-    titulo: "Carregando regras",
-    detalhe: "Buscando regras cadastradas no Firebase."
-  });
-
-  const regra = await buscarRegraPadrao();
-
-  avisarStatus(onStatus, {
-    tipo: "sucesso",
-    titulo: "Regras carregadas",
-    detalhe: `Padrão: ${regra.comentariosPadrao || 6} comentário(s).`
-  });
-
-  avisarStatus(onStatus, {
-    tipo: "andamento",
-    titulo: "Carregando obras",
-    detalhe: "Buscando obras cadastradas."
-  });
-
-  const obras = await listarObras();
-
-  avisarStatus(onStatus, {
-    tipo: "sucesso",
-    titulo: "Obras carregadas",
-    detalhe: `${obras.length} obra(s) cadastrada(s).`
+    titulo: "Iniciando verificação",
+    detalhe: "Buscando comentários no Wattpad."
   });
 
   const resultados = [];
 
-  for (const leitura of ficha.leituras) {
-    avisarStatus(onStatus, {
-      tipo: "andamento",
-      titulo: "Analisando leitura",
-      detalhe: leitura.obra || "Obra não informada"
-    });
+  for (const itemLeitura of plano.leituras) {
+    const leitura = itemLeitura.leitura;
 
-    if (leitura.minhaObra && regra.ignorarMinhaObra !== false) {
-      avisarStatus(onStatus, {
-        tipo: "sucesso",
-        titulo: "Minha Obra ignorada",
-        detalhe: leitura.obra || "Obra marcada como Minha Obra."
-      });
-
+    if (itemLeitura.minhaObra) {
       resultados.push({
         leitura,
         tipo: "minha-obra",
@@ -427,69 +439,16 @@ export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
       continue;
     }
 
-    const buscaObra = encontrarObraPorNome(leitura.obra, obras);
-
-    if (!buscaObra.obra) {
-      avisarStatus(onStatus, {
-        tipo: "erro",
-        titulo: "Obra não encontrada",
-        detalhe: leitura.obra || "Nome não identificado."
-      });
-
+    if (!itemLeitura.obraEncontrada) {
       resultados.push({
         leitura,
         tipo: "obra-nao-encontrada",
         status: "erro",
         statusTexto: "Obra não encontrada",
         obraEncontrada: null,
-        pontuacaoObra: buscaObra.pontuacao,
+        pontuacaoObra: itemLeitura.pontuacaoObra || 0,
         capitulos: [],
-        motivos: [
-          "Não encontrei uma obra cadastrada com nome parecido com o informado na ficha."
-        ]
-      });
-
-      continue;
-    }
-
-    avisarStatus(onStatus, {
-      tipo: "sucesso",
-      titulo: "Obra encontrada",
-      detalhe: `${buscaObra.obra.nome} · compatibilidade ${buscaObra.pontuacao}%`
-    });
-
-    avisarStatus(onStatus, {
-      tipo: "andamento",
-      titulo: "Carregando capítulos",
-      detalhe: buscaObra.obra.nome
-    });
-
-    const capitulosDaObra = await listarCapitulos(buscaObra.obra.id);
-
-    avisarStatus(onStatus, {
-      tipo: "sucesso",
-      titulo: "Capítulos carregados",
-      detalhe: `${capitulosDaObra.length} capítulo(s) em ${buscaObra.obra.nome}.`
-    });
-
-    if (!leitura.capitulos.length) {
-      avisarStatus(onStatus, {
-        tipo: "erro",
-        titulo: "Capítulos não identificados",
-        detalhe: leitura.obra || "Obra sem capítulos informados."
-      });
-
-      resultados.push({
-        leitura,
-        tipo: "sem-capitulos",
-        status: "erro",
-        statusTexto: "Capítulos não identificados",
-        obraEncontrada: buscaObra.obra,
-        pontuacaoObra: buscaObra.pontuacao,
-        capitulos: [],
-        motivos: [
-          "A obra foi encontrada, mas não consegui identificar quais capítulos foram lidos na ficha."
-        ]
+        motivos: ["Obra não encontrada no cadastro."]
       });
 
       continue;
@@ -497,36 +456,11 @@ export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
 
     const capitulosResultado = [];
 
-    for (const capituloPedido of leitura.capitulos) {
-      avisarStatus(onStatus, {
-        tipo: "andamento",
-        titulo: "Procurando capítulo",
-        detalhe: `${leitura.obra}: ${
-          capituloPedido.texto ||
-          capituloPedido.titulo ||
-          capituloPedido.numero ||
-          "capítulo"
-        }`
-      });
-
-      const capituloEncontrado = encontrarCapituloPedido(
-        capituloPedido,
-        capitulosDaObra
-      );
-
-      if (capituloEncontrado) {
-        avisarStatus(onStatus, {
-          tipo: "sucesso",
-          titulo: "Capítulo encontrado",
-          detalhe: capituloEncontrado.titulo
-        });
-      }
-
-      const resumo = await montarResumoCapitulo({
-        capituloPedido,
-        capituloEncontrado,
-        regra,
-        usuario: ficha.user,
+    for (const itemCapitulo of itemLeitura.capitulos) {
+      const resumo = await verificarCapituloDoPlano({
+        itemCapitulo,
+        regra: plano.regra,
+        usuario: plano.ficha.user,
         leitura,
         onStatus
       });
@@ -537,51 +471,39 @@ export async function conferirFichaComBanco(textoFicha, opcoes = {}) {
     const temErro = capitulosResultado.some((item) => !item.encontrado);
 
     const temReprovado = capitulosResultado.some(
-      (item) => item.status === "reprovado" || item.status === "erro-comentarios"
+      (item) =>
+        item.status === "reprovado" ||
+        item.status === "erro-comentarios" ||
+        item.status === "capitulo-nao-encontrado"
     );
-
-    const statusLeitura = temErro
-      ? "parcial"
-      : temReprovado
-        ? "reprovado"
-        : "aprovado";
-
-    avisarStatus(onStatus, {
-      tipo: statusLeitura === "aprovado" ? "sucesso" : "erro",
-      titulo:
-        statusLeitura === "aprovado"
-          ? "Leitura aprovada"
-          : "Leitura com pendência",
-      detalhe: leitura.obra || "Leitura analisada."
-    });
 
     resultados.push({
       leitura,
       tipo: "obra-encontrada",
-      status: statusLeitura,
+      status: temErro ? "parcial" : temReprovado ? "reprovado" : "aprovado",
       statusTexto: temErro
         ? "Obra encontrada, mas há capítulo pendente"
         : temReprovado
           ? "Leitura reprovada"
           : "Leitura aprovada",
-      obraEncontrada: buscaObra.obra,
-      pontuacaoObra: buscaObra.pontuacao,
+      obraEncontrada: itemLeitura.obraEncontrada,
+      pontuacaoObra: itemLeitura.pontuacaoObra,
       capitulos: capitulosResultado,
       motivos: temErro
-        ? ["Alguns capítulos da ficha não foram encontrados na obra cadastrada."]
+        ? ["Alguns capítulos não foram selecionados/encontrados."]
         : []
     });
   }
 
   avisarStatus(onStatus, {
     tipo: "sucesso",
-    titulo: "Conferência finalizada",
-    detalhe: `${resultados.length} leitura(s) processada(s).`
+    titulo: "Verificação finalizada",
+    detalhe: "Revise o resultado antes de salvar no histórico."
   });
 
   return {
-    ficha,
-    regra,
+    ficha: plano.ficha,
+    regra: plano.regra,
     resultados
   };
 }
