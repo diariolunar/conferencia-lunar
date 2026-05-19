@@ -1531,3 +1531,10 @@
 .remove-review-chapter {
   margin-top: 10px;
 }
+
+
+.history-sub-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 12px 0;
+}
