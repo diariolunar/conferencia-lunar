@@ -2,6 +2,7 @@ import { listarObras } from "./obrasService.js";
 import { listarCapitulos } from "./capitulosService.js";
 import { buscarRegraPadrao } from "./regrasService.js";
 import { buscarComentariosDoCapitulo } from "./comentariosService.js";
+import { sincronizarObraComWattpad } from "./sincronizacaoWattpadService.js";
 import { interpretarFicha } from "../utils/interpretarFicha.js";
 import { normalizarParaBusca } from "../utils/normalizarTexto.js";
 import { estimarTempoLeitura } from "../utils/estimarTempoLeitura.js";
@@ -210,6 +211,18 @@ export async function prepararPlanoConferencia(textoFicha, opcoes = {}) {
       });
 
       continue;
+    }
+
+    try {
+      await sincronizarObraComWattpad(buscaObra.obra, { onStatus });
+    } catch (error) {
+      console.error(error);
+
+      avisarStatus(onStatus, {
+        tipo: "erro",
+        titulo: "Sincronização falhou",
+        detalhe: `${buscaObra.obra.nome}: ${error.message}`
+      });
     }
 
     const capitulosDisponiveis = await listarCapitulos(buscaObra.obra.id);
