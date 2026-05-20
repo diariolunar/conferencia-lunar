@@ -168,31 +168,29 @@ export default function Obras() {
   }
 
   async function sincronizarTodas() {
-    if (obras.length === 0) {
-      setErro("Não há obras cadastradas para atualizar.");
+    const confirmar = window.confirm(
+      "Deseja atualizar todas as obras cadastradas com os capítulos atuais do Wattpad?"
+    );
+
+    if (!confirmar) {
       return;
     }
 
     try {
       setSincronizando(true);
       setErro("");
-      setMensagem("Atualizando todas as obras com o Wattpad...");
+      setMensagem("Atualizando todas as obras pelo Wattpad...");
 
-      const resumo = await sincronizarTodasAsObrasComWattpad(obras, {
-        onStatus: (status) => {
-          setMensagem(status.detalhe || status.titulo || "Atualizando obras...");
-        }
-      });
-
-      await carregarObras();
+      const resumo = await sincronizarTodasAsObrasComWattpad(obras);
 
       setMensagem(
         `Atualização concluída. ${resumo.criados} capítulo(s) novo(s), ${resumo.atualizados} atualizado(s), ${resumo.ignoradas} obra(s) ignorada(s), ${resumo.erros} erro(s).`
       );
+
+      await carregarObras();
     } catch (error) {
       console.error(error);
-      setErro(`Não consegui atualizar as obras. Motivo: ${error.message}`);
-      setMensagem("");
+      setErro(`Não consegui atualizar todas as obras. Motivo: ${error.message}`);
     } finally {
       setSincronizando(false);
     }
@@ -237,7 +235,12 @@ export default function Obras() {
             {sincronizando ? "Atualizando..." : "Atualizar todas do Wattpad"}
           </button>
 
-          <button className="primary-button" type="button" onClick={abrirNovaObra}>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={abrirNovaObra}
+            disabled={sincronizando}
+          >
             Nova obra
           </button>
         </div>
@@ -372,7 +375,8 @@ export default function Obras() {
           <div>
             <h3>Obras cadastradas</h3>
             <p>
-              A atualização automática do Wattpad também acontece ao preparar uma conferência.
+              Ao cadastrar uma obra nova, a capa e os capítulos serão buscados
+              automaticamente no Wattpad.
             </p>
           </div>
         </div>
@@ -405,4 +409,63 @@ export default function Obras() {
                           <img src={obra.capaUrl} alt={`Capa de ${obra.nome}`} />
                         ) : (
                           <div className="cover-placeholder">📕</div>
-                       
+                        )}
+
+                        <div>
+                          <strong>{obra.nome}</strong>
+                          <span>{obra.linkWattpad}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <strong>{obra.autor || "Não informado"}</strong>
+                      <span className="table-subtext">
+                        {obra.userAutor || "Sem user"}
+                      </span>
+                    </td>
+
+                    <td>
+                      <span className={`status-badge ${obra.status || "ativa"}`}>
+                        {obra.status || "ativa"}
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="table-actions">
+                        <Link
+                          className="mini-button primary"
+                          to={`/obras/${obra.id}`}
+                        >
+                          Capítulos
+                        </Link>
+
+                        <button
+                          className="mini-button"
+                          type="button"
+                          onClick={() => abrirEdicao(obra)}
+                          disabled={sincronizando}
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          className="mini-button danger"
+                          type="button"
+                          onClick={() => removerObra(obra)}
+                          disabled={sincronizando}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
