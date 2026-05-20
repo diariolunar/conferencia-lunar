@@ -160,6 +160,7 @@ export async function sincronizarTodasAsObrasComWattpad(obras = [], opcoes = {})
       resumo.erros += 1;
       resumo.detalhesErros.push({
         obra: obra.nome || "Obra sem nome",
+        link: obra.linkWattpad || "",
         erro: error.message || "Erro desconhecido"
       });
 
