@@ -9,12 +9,17 @@ function normalizar(texto = "") {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function criarChaveCapitulo(capitulo = {}) {
   if (capitulo.linkWattpad) {
-    return `link:${capitulo.linkWattpad}`;
+    return `link:${String(capitulo.linkWattpad).trim()}`;
+  }
+
+  if (capitulo.idWattpad) {
+    return `id:${String(capitulo.idWattpad).trim()}`;
   }
 
   return `titulo:${normalizar(capitulo.titulo || "")}`;
@@ -44,7 +49,13 @@ export async function buscarCapitulosDoWattpad(linkWattpad) {
     })
   });
 
-  const dados = await resposta.json();
+  let dados = null;
+
+  try {
+    dados = await resposta.json();
+  } catch {
+    throw new Error("A API de capítulos não respondeu em JSON.");
+  }
 
   if (!resposta.ok || !dados.sucesso) {
     throw new Error(dados?.erro || "Não consegui buscar capítulos no Wattpad.");
@@ -98,6 +109,8 @@ export async function sincronizarObraComWattpad(obra, opcoes = {}) {
 
     const mudou =
       existente.titulo !== capituloTratado.titulo ||
+      Number(existente.numero ?? 0) !== Number(capituloTratado.numero ?? 0) ||
+      String(existente.tipo || "") !== String(capituloTratado.tipo || "") ||
       Number(existente.totalPalavras || 0) !== Number(capituloTratado.totalPalavras || 0) ||
       Number(existente.totalParagrafos || 0) !== Number(capituloTratado.totalParagrafos || 0) ||
       Number(existente.ordem || 0) !== Number(capituloTratado.ordem || 0);
@@ -150,18 +163,4 @@ export async function sincronizarTodasAsObrasComWattpad(obras = [], opcoes = {})
       }
 
       resumo.criados += resultado.criados || 0;
-      resumo.atualizados += resultado.atualizados || 0;
-    } catch (error) {
-      console.error(error);
-      resumo.erros += 1;
-
-      onStatus?.({
-        tipo: "erro",
-        titulo: "Erro ao sincronizar obra",
-        detalhe: `${obra.nome}: ${error.message}`
-      });
-    }
-  }
-
-  return resumo;
-}
+      resumo.atualizados += resultado.atualizados || 
