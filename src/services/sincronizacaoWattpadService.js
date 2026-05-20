@@ -4,17 +4,20 @@ import {
   listarCapitulos
 } from "./capitulosService.js";
 
+import { buscarDadosDaObraWattpad } from "./wattpadService.js";
+
 function normalizar(texto = "") {
   return String(texto)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function criarChaveCapitulo(capitulo = {}) {
   if (capitulo.linkWattpad) {
-    return `link:${capitulo.linkWattpad}`;
+    return `link:${String(capitulo.linkWattpad).trim()}`;
   }
 
   return `titulo:${normalizar(capitulo.titulo || "")}`;
@@ -33,30 +36,16 @@ function tratarCapituloImportado(capitulo = {}, ordem = 0) {
   };
 }
 
-export async function buscarCapitulosDoWattpad(linkWattpad) {
-  const resposta = await fetch("/api/wattpad/capitulos", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      link: linkWattpad
-    })
-  });
-
-  let dados = null;
-
-  try {
-    dados = await resposta.json();
-  } catch {
-    throw new Error("A API de capítulos não respondeu em JSON.");
-  }
-
-  if (!resposta.ok || !dados.sucesso) {
-    throw new Error(dados?.erro || "Não consegui buscar capítulos no Wattpad.");
-  }
-
-  return dados.capitulos || [];
+function dadosMudaram(capituloSalvo = {}, capituloNovo = {}) {
+  return (
+    String(capituloSalvo.titulo || "") !== String(capituloNovo.titulo || "") ||
+    String(capituloSalvo.linkWattpad || "") !== String(capituloNovo.linkWattpad || "") ||
+    String(capituloSalvo.tipo || "") !== String(capituloNovo.tipo || "") ||
+    Number(capituloSalvo.numero ?? -999) !== Number(capituloNovo.numero ?? -999) ||
+    Number(capituloSalvo.totalPalavras || 0) !== Number(capituloNovo.totalPalavras || 0) ||
+    Number(capituloSalvo.totalParagrafos || 0) !== Number(capituloNovo.totalParagrafos || 0) ||
+    Number(capituloSalvo.ordem || 0) !== Number(capituloNovo.ordem || 0)
+  );
 }
 
 export async function sincronizarObraComWattpad(obra, opcoes = {}) {
@@ -76,12 +65,24 @@ export async function sincronizarObraComWattpad(obra, opcoes = {}) {
   onStatus?.({
     tipo: "andamento",
     titulo: "Sincronizando Wattpad",
-    detalhe: obra.nome
+    detalhe: obra.nome || "Obra sem nome"
   });
 
-  const capitulosWattpad = await buscarCapitulosDoWattpad(obra.linkWattpad);
-  const capitulosSalvos = await listarCapitulos(obra.id);
+  const dadosWattpad = await buscarDadosDaObraWattpad(obra.linkWattpad);
+  const capitulosWattpad = dadosWattpad.capitulos || [];
 
+  if (!capitulosWattpad.length) {
+    return {
+      sucesso: true,
+      ignorado: false,
+      criados: 0,
+      atualizados: 0,
+      totalWattpad: 0,
+      mensagem: "Nenhum capítulo encontrado no Wattpad."
+    };
+  }
+
+  const capitulosSalvos = await listarCapitulos(obra.id);
   const mapaSalvos = new Map();
 
   capitulosSalvos.forEach((capitulo) => {
@@ -102,13 +103,7 @@ export async function sincronizarObraComWattpad(obra, opcoes = {}) {
       continue;
     }
 
-    const mudou =
-      existente.titulo !== capituloTratado.titulo ||
-      Number(existente.totalPalavras || 0) !== Number(capituloTratado.totalPalavras || 0) ||
-      Number(existente.totalParagrafos || 0) !== Number(capituloTratado.totalParagrafos || 0) ||
-      Number(existente.ordem || 0) !== Number(capituloTratado.ordem || 0);
-
-    if (mudou) {
+    if (dadosMudaram(existente, capituloTratado)) {
       await atualizarCapitulo(obra.id, existente.id, {
         ...existente,
         ...capituloTratado
@@ -129,7 +124,8 @@ export async function sincronizarObraComWattpad(obra, opcoes = {}) {
     ignorado: false,
     criados,
     atualizados,
-    totalWattpad: capitulosWattpad.length
+    totalWattpad: capitulosWattpad.length,
+    mensagem: `${criados} novo(s), ${atualizados} atualizado(s).`
   };
 }
 
@@ -142,7 +138,8 @@ export async function sincronizarTodasAsObrasComWattpad(obras = [], opcoes = {})
     ignoradas: 0,
     criados: 0,
     atualizados: 0,
-    erros: 0
+    erros: 0,
+    detalhesErros: []
   };
 
   for (const obra of obras) {
@@ -159,12 +156,17 @@ export async function sincronizarTodasAsObrasComWattpad(obras = [], opcoes = {})
       resumo.atualizados += resultado.atualizados || 0;
     } catch (error) {
       console.error(error);
+
       resumo.erros += 1;
+      resumo.detalhesErros.push({
+        obra: obra.nome || "Obra sem nome",
+        erro: error.message || "Erro desconhecido"
+      });
 
       onStatus?.({
         tipo: "erro",
         titulo: "Erro ao sincronizar obra",
-        detalhe: `${obra.nome}: ${error.message}`
+        detalhe: `${obra.nome || "Obra sem nome"}: ${error.message || "Erro desconhecido"}`
       });
     }
   }
