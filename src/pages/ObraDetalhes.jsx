@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { buscarObraPorId } from "../services/obrasService.js";
+
 import {
   atualizarCapitulo,
   criarCapitulo,
   excluirCapitulo,
+  excluirCapitulosImportadosDaObra,
+  excluirTodosCapitulosDaObra,
   listarCapitulos
 } from "../services/capitulosService.js";
 
@@ -35,6 +38,10 @@ function obterDescricaoCapitulo(capitulo = {}) {
     return "Bônus";
   }
 
+  if (capitulo.origem === "wattpad") {
+    return "Importado do Wattpad";
+  }
+
   if (capitulo.observacoes) {
     return capitulo.observacoes;
   }
@@ -52,7 +59,9 @@ export default function ObraDetalhes() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [limpando, setLimpando] = useState(false);
   const [erro, setErro] = useState("");
+  const [mensagem, setMensagem] = useState("");
 
   useEffect(() => {
     carregarDados();
@@ -63,10 +72,11 @@ export default function ObraDetalhes() {
       setCarregando(true);
       setErro("");
 
-      const [obraEncontrada, capitulosEncontrados] = await Promise.all([
-        buscarObraPorId(obraId),
-        listarCapitulos(obraId)
-      ]);
+      const [obraEncontrada, capitulosEncontrados] =
+        await Promise.all([
+          buscarObraPorId(obraId),
+          listarCapitulos(obraId)
+        ]);
 
       setObra(obraEncontrada);
       setCapitulos(capitulosEncontrados);
@@ -83,6 +93,7 @@ export default function ObraDetalhes() {
     setCapituloEditando(null);
     setMostrarFormulario(true);
     setErro("");
+    setMensagem("");
   }
 
   function abrirEdicao(capitulo) {
@@ -100,6 +111,7 @@ export default function ObraDetalhes() {
     setCapituloEditando(capitulo);
     setMostrarFormulario(true);
     setErro("");
+    setMensagem("");
   }
 
   function fecharFormulario() {
@@ -127,6 +139,7 @@ export default function ObraDetalhes() {
     try {
       setSalvando(true);
       setErro("");
+      setMensagem("");
 
       const numeroTratado =
         formulario.tipo === "prologo"
@@ -135,25 +148,31 @@ export default function ObraDetalhes() {
             ? Number(formulario.numero)
             : null;
 
-      const ordemTratada =
-        String(formulario.ordem).trim()
-          ? Number(formulario.ordem)
-          : capituloEditando?.ordem || capitulos.length + 1;
+      const ordemTratada = String(formulario.ordem).trim()
+        ? Number(formulario.ordem)
+        : capituloEditando?.ordem || capitulos.length + 1;
 
       const dados = {
         ...formulario,
         numero: numeroTratado,
-        ordem: ordemTratada
+        ordem: ordemTratada,
+        origem: capituloEditando?.origem || "manual"
       };
 
       if (capituloEditando) {
-        await atualizarCapitulo(obraId, capituloEditando.id, dados);
+        await atualizarCapitulo(
+          obraId,
+          capituloEditando.id,
+          dados
+        );
       } else {
         await criarCapitulo(obraId, dados);
       }
 
       await carregarDados();
       fecharFormulario();
+
+      setMensagem("Capítulo salvo com sucesso.");
     } catch (error) {
       console.error(error);
       setErro("Não consegui salvar o capítulo.");
@@ -173,11 +192,82 @@ export default function ObraDetalhes() {
 
     try {
       setErro("");
+      setMensagem("");
+
       await excluirCapitulo(obraId, capitulo.id);
+
       await carregarDados();
+
+      setMensagem("Capítulo excluído com sucesso.");
     } catch (error) {
       console.error(error);
       setErro("Não consegui excluir o capítulo.");
+    }
+  }
+
+  async function limparImportados() {
+    const confirmar = window.confirm(
+      "Tem certeza que deseja excluir apenas os capítulos importados automaticamente do Wattpad nesta obra?"
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    try {
+      setLimpando(true);
+      setErro("");
+      setMensagem("");
+
+      const total = await excluirCapitulosImportadosDaObra(obraId);
+
+      await carregarDados();
+
+      setMensagem(
+        `${total} capítulo(s) importado(s) foram excluídos.`
+      );
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui limpar os capítulos importados.");
+    } finally {
+      setLimpando(false);
+    }
+  }
+
+  async function limparTodos() {
+    const confirmar = window.confirm(
+      "ATENÇÃO: isso vai apagar TODOS os capítulos desta obra, inclusive os cadastrados manualmente. Deseja continuar?"
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    const confirmarNovamente = window.confirm(
+      "Confirma mesmo? Essa ação não pode ser desfeita."
+    );
+
+    if (!confirmarNovamente) {
+      return;
+    }
+
+    try {
+      setLimpando(true);
+      setErro("");
+      setMensagem("");
+
+      const total = await excluirTodosCapitulosDaObra(obraId);
+
+      await carregarDados();
+
+      setMensagem(
+        `${total} capítulo(s) foram excluídos desta obra.`
+      );
+    } catch (error) {
+      console.error(error);
+      setErro("Não consegui limpar todos os capítulos.");
+    } finally {
+      setLimpando(false);
     }
   }
 
@@ -222,9 +312,28 @@ export default function ObraDetalhes() {
           </Link>
 
           <button
+            className="secondary-button"
+            type="button"
+            onClick={limparImportados}
+            disabled={limpando || capitulos.length === 0}
+          >
+            {limpando ? "Limpando..." : "Limpar importados"}
+          </button>
+
+          <button
+            className="mini-button danger"
+            type="button"
+            onClick={limparTodos}
+            disabled={limpando || capitulos.length === 0}
+          >
+            Limpar todos
+          </button>
+
+          <button
             className="primary-button"
             type="button"
             onClick={abrirNovoCapitulo}
+            disabled={limpando}
           >
             Novo capítulo
           </button>
@@ -232,11 +341,16 @@ export default function ObraDetalhes() {
       </div>
 
       {erro ? <p className="form-error">{erro}</p> : null}
+      {mensagem ? <p className="form-success">{mensagem}</p> : null}
 
       <div className="obra-detail-grid">
         <div className="panel obra-info-panel">
           {obra.capaUrl ? (
-            <img className="obra-cover-large" src={obra.capaUrl} alt={obra.nome} />
+            <img
+              className="obra-cover-large"
+              src={obra.capaUrl}
+              alt={obra.nome}
+            />
           ) : (
             <div className="obra-cover-large placeholder">📕</div>
           )}
@@ -245,15 +359,13 @@ export default function ObraDetalhes() {
             <h3>{obra.nome}</h3>
 
             <p>
-              <strong>Autor:</strong> {obra.autor || "Não informado"}
+              <strong>Autor:</strong>{" "}
+              {obra.autor || "Não informado"}
             </p>
 
             <p>
-              <strong>User:</strong> {obra.userAutor || "Não informado"}
-            </p>
-
-            <p>
-              <strong>Sub:</strong> {obra.sub || "Não informado"}
+              <strong>User:</strong>{" "}
+              {obra.userAutor || "Não informado"}
             </p>
 
             <p>
@@ -266,7 +378,11 @@ export default function ObraDetalhes() {
             {obra.linkWattpad ? (
               <p>
                 <strong>Link:</strong>{" "}
-                <a href={obra.linkWattpad} target="_blank" rel="noreferrer">
+                <a
+                  href={obra.linkWattpad}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Abrir no Wattpad
                 </a>
               </p>
@@ -274,7 +390,8 @@ export default function ObraDetalhes() {
 
             {obra.observacoes ? (
               <p>
-                <strong>Observações:</strong> {obra.observacoes}
+                <strong>Observações:</strong>{" "}
+                {obra.observacoes}
               </p>
             ) : null}
           </div>
@@ -290,7 +407,29 @@ export default function ObraDetalhes() {
             </div>
 
             <div>
-              <span>Palavras cadastradas</span>
+              <span>Importados</span>
+              <strong>
+                {
+                  capitulos.filter(
+                    (capitulo) => capitulo.origem === "wattpad"
+                  ).length
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>Manuais</span>
+              <strong>
+                {
+                  capitulos.filter(
+                    (capitulo) => capitulo.origem !== "wattpad"
+                  ).length
+                }
+              </strong>
+            </div>
+
+            <div>
+              <span>Palavras</span>
               <strong>
                 {capitulos
                   .reduce((total, capitulo) => {
@@ -318,10 +457,12 @@ export default function ObraDetalhes() {
         <div className="panel">
           <div className="section-title-row">
             <div>
-              <h3>{capituloEditando ? "Editar capítulo" : "Novo capítulo"}</h3>
+              <h3>
+                {capituloEditando ? "Editar capítulo" : "Novo capítulo"}
+              </h3>
+
               <p>
-                O número agora é opcional. Para obras com capítulos nomeados,
-                use apenas o título.
+                Cadastre ou corrija capítulos manualmente. O número é opcional.
               </p>
             </div>
 
@@ -329,6 +470,7 @@ export default function ObraDetalhes() {
               className="ghost-button"
               type="button"
               onClick={fecharFormulario}
+              disabled={salvando}
             >
               Fechar
             </button>
@@ -337,9 +479,13 @@ export default function ObraDetalhes() {
           <form className="form-grid" onSubmit={salvarCapitulo}>
             <label className="field">
               <span>Tipo</span>
+
               <select
                 value={formulario.tipo}
-                onChange={(event) => atualizarCampo("tipo", event.target.value)}
+                onChange={(event) =>
+                  atualizarCampo("tipo", event.target.value)
+                }
+                disabled={salvando}
               >
                 <option value="capitulo">Capítulo</option>
                 <option value="prologo">Prólogo</option>
@@ -350,27 +496,35 @@ export default function ObraDetalhes() {
 
             <label className="field">
               <span>Número opcional</span>
+
               <input
                 type="number"
                 value={formulario.numero}
-                onChange={(event) => atualizarCampo("numero", event.target.value)}
+                onChange={(event) =>
+                  atualizarCampo("numero", event.target.value)
+                }
                 placeholder="Pode deixar vazio"
-                disabled={formulario.tipo === "prologo"}
+                disabled={salvando || formulario.tipo === "prologo"}
               />
             </label>
 
             <label className="field field-full">
               <span>Título do capítulo *</span>
+
               <input
                 type="text"
                 value={formulario.titulo}
-                onChange={(event) => atualizarCampo("titulo", event.target.value)}
+                onChange={(event) =>
+                  atualizarCampo("titulo", event.target.value)
+                }
                 placeholder="Ex: A Floresta"
+                disabled={salvando}
               />
             </label>
 
             <label className="field field-full">
               <span>Link do capítulo no Wattpad</span>
+
               <input
                 type="url"
                 value={formulario.linkWattpad}
@@ -378,11 +532,13 @@ export default function ObraDetalhes() {
                   atualizarCampo("linkWattpad", event.target.value)
                 }
                 placeholder="https://www.wattpad.com/..."
+                disabled={salvando}
               />
             </label>
 
             <label className="field">
               <span>Total de palavras</span>
+
               <input
                 type="number"
                 value={formulario.totalPalavras}
@@ -390,11 +546,13 @@ export default function ObraDetalhes() {
                   atualizarCampo("totalPalavras", event.target.value)
                 }
                 placeholder="Ex: 2500"
+                disabled={salvando}
               />
             </label>
 
             <label className="field">
               <span>Total de parágrafos</span>
+
               <input
                 type="number"
                 value={formulario.totalParagrafos}
@@ -402,21 +560,27 @@ export default function ObraDetalhes() {
                   atualizarCampo("totalParagrafos", event.target.value)
                 }
                 placeholder="Ex: 80"
+                disabled={salvando}
               />
             </label>
 
             <label className="field">
               <span>Ordem de exibição</span>
+
               <input
                 type="number"
                 value={formulario.ordem}
-                onChange={(event) => atualizarCampo("ordem", event.target.value)}
-                placeholder="Usado só para ordenar"
+                onChange={(event) =>
+                  atualizarCampo("ordem", event.target.value)
+                }
+                placeholder="Usado para ordenar"
+                disabled={salvando}
               />
             </label>
 
             <label className="field field-full">
               <span>Observações</span>
+
               <textarea
                 value={formulario.observacoes}
                 onChange={(event) =>
@@ -424,6 +588,7 @@ export default function ObraDetalhes() {
                 }
                 placeholder="Alguma observação sobre esse capítulo..."
                 rows="4"
+                disabled={salvando}
               />
             </label>
 
@@ -432,11 +597,16 @@ export default function ObraDetalhes() {
                 className="secondary-button"
                 type="button"
                 onClick={fecharFormulario}
+                disabled={salvando}
               >
                 Cancelar
               </button>
 
-              <button className="primary-button" type="submit" disabled={salvando}>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={salvando}
+              >
                 {salvando
                   ? "Salvando..."
                   : capituloEditando
@@ -452,9 +622,10 @@ export default function ObraDetalhes() {
         <div className="section-title-row">
           <div>
             <h3>Capítulos cadastrados</h3>
+
             <p>
-              A exibição agora prioriza o título. A ordem fica apenas como dado
-              interno.
+              Use “Limpar importados” para remover capítulos que foram puxados
+              errado pelo Wattpad sem apagar os manuais.
             </p>
           </div>
         </div>
@@ -472,7 +643,7 @@ export default function ObraDetalhes() {
                   <th>Capítulo</th>
                   <th>Palavras</th>
                   <th>Parágrafos</th>
-                  <th>Tempo estimado</th>
+                  <th>Tempo</th>
                   <th>Ações</th>
                 </tr>
               </thead>
@@ -491,7 +662,9 @@ export default function ObraDetalhes() {
                         <strong>{capitulo.titulo}</strong>
 
                         {descricao ? (
-                          <span className="table-subtext">{descricao}</span>
+                          <span className="table-subtext">
+                            {descricao}
+                          </span>
                         ) : null}
                       </td>
 
