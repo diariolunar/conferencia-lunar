@@ -1,14 +1,20 @@
 function extrairStoryId(link = "") {
-  const texto = String(link || "");
+  const texto = String(link || "").trim();
 
-  const porStory = texto.match(/story\/(\d+)/i);
-  if (porStory) {
-    return porStory[1];
-  }
+  const patterns = [
+    /story\/(\d+)/i,
+    /stories\/(\d+)/i,
+    /wattpad\.com\/story\/(\d+)/i,
+    /wattpad\.com\/(\d+)/i,
+    /[?&]story_id=(\d+)/i
+  ];
 
-  const porNumero = texto.match(/wattpad\.com\/(\d+)/i);
-  if (porNumero) {
-    return porNumero[1];
+  for (const pattern of patterns) {
+    const match = texto.match(pattern);
+
+    if (match?.[1]) {
+      return match[1];
+    }
   }
 
   return "";
@@ -412,10 +418,17 @@ export default async function handler(req, res) {
     const { link } = req.body || {};
     const storyId = extrairStoryId(link);
 
+    console.log("LINK RECEBIDO:", link);
+    console.log("STORY ID:", storyId);
+
     if (!storyId) {
       return res.status(400).json({
         sucesso: false,
-        erro: "Não consegui identificar o ID da obra no Wattpad."
+        erro: "Não consegui identificar o ID da obra no Wattpad.",
+        debug: {
+          linkRecebido: link || "",
+          storyId: ""
+        }
       });
     }
 
@@ -446,7 +459,12 @@ export default async function handler(req, res) {
     if (!partes.length) {
       return res.status(404).json({
         sucesso: false,
-        erro: "Nenhum capítulo encontrado no Wattpad."
+        erro: "Nenhum capítulo encontrado no Wattpad.",
+        debug: {
+          linkRecebido: link || "",
+          storyId,
+          partesEncontradas: 0
+        }
       });
     }
 
@@ -480,6 +498,8 @@ export default async function handler(req, res) {
       capitulos,
       debug: {
         origem: "api-wattpad-capitulos",
+        linkRecebido: link || "",
+        storyId,
         brutosEncontrados: partes.length,
         depoisDoFiltro: capitulos.length
       }
