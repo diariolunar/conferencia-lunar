@@ -27,7 +27,6 @@ function normalizar(texto = "") {
 
 function extrairNumeroReal(titulo = "") {
   const busca = normalizar(titulo);
-
   const match = busca.match(/\b(?:capitulo|cap|chapter)\s*(\d+)\b/);
 
   if (match) {
@@ -44,7 +43,7 @@ function detectarTipo(titulo = "") {
     return "prologo";
   }
 
-  if (busca.includes("bonus") || busca.includes("bônus")) {
+  if (busca.includes("bonus")) {
     return "bonus";
   }
 
@@ -56,9 +55,13 @@ function detectarTipo(titulo = "") {
 }
 
 function contarPalavras(texto = "") {
-  return limparTexto(texto)
-    .split(/\s+/)
-    .filter(Boolean).length;
+  const limpo = limparTexto(texto);
+
+  if (!limpo) {
+    return 0;
+  }
+
+  return limpo.split(/\s+/).filter(Boolean).length;
 }
 
 function contarParagrafos(texto = "") {
@@ -109,7 +112,7 @@ async function buscarTexto(url) {
 async function buscarPartesPorApi(storyId) {
   const urls = [
     `https://www.wattpad.com/api/v3/stories/${storyId}`,
-    `https://www.wattpad.com/apiv2/storytext?id=${storyId}`
+    `https://www.wattpad.com/v4/stories/${storyId}`
   ];
 
   for (const url of urls) {
@@ -141,10 +144,10 @@ async function buscarTextoParte(partId) {
 
   for (const url of urls) {
     try {
-      const dadosOuTexto = await buscarTexto(url);
+      const texto = await buscarTexto(url);
 
-      if (dadosOuTexto) {
-        return dadosOuTexto;
+      if (texto) {
+        return texto;
       }
     } catch {
       // tenta o próximo
