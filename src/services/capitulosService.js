@@ -90,7 +90,7 @@ export async function salvarCapitulosImportados(obraId, capitulos = []) {
     const ordem =
       capitulo.tipo === "prologo"
         ? 0
-        : valorNumericoOuPadrao(capitulo.ordem, numero || index + 1);
+        : valorNumericoOuPadrao(capitulo.ordem, index + 1);
 
     batch.set(
       ref,
@@ -154,4 +154,64 @@ export async function atualizarCapitulo(obraId, capituloId, dados) {
 export async function excluirCapitulo(obraId, capituloId) {
   const ref = doc(db, "obras", obraId, "capitulos", capituloId);
   return deleteDoc(ref);
+}
+
+export async function excluirTodosCapitulosDaObra(obraId) {
+  const snapshot = await getDocs(capitulosRef(obraId));
+
+  if (snapshot.empty) {
+    return 0;
+  }
+
+  const docs = snapshot.docs;
+  let totalExcluido = 0;
+
+  for (let inicio = 0; inicio < docs.length; inicio += 450) {
+    const batch = writeBatch(db);
+    const fatia = docs.slice(inicio, inicio + 450);
+
+    fatia.forEach((documento) => {
+      batch.delete(documento.ref);
+    });
+
+    await batch.commit();
+
+    totalExcluido += fatia.length;
+  }
+
+  return totalExcluido;
+}
+
+export async function excluirCapitulosImportadosDaObra(obraId) {
+  const snapshot = await getDocs(capitulosRef(obraId));
+
+  if (snapshot.empty) {
+    return 0;
+  }
+
+  const importados = snapshot.docs.filter((documento) => {
+    const dados = documento.data();
+    return dados.origem === "wattpad";
+  });
+
+  if (importados.length === 0) {
+    return 0;
+  }
+
+  let totalExcluido = 0;
+
+  for (let inicio = 0; inicio < importados.length; inicio += 450) {
+    const batch = writeBatch(db);
+    const fatia = importados.slice(inicio, inicio + 450);
+
+    fatia.forEach((documento) => {
+      batch.delete(documento.ref);
+    });
+
+    await batch.commit();
+
+    totalExcluido += fatia.length;
+  }
+
+  return totalExcluido;
 }
