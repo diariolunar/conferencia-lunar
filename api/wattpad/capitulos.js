@@ -25,7 +25,13 @@ function normalizar(texto = "") {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizarSlug(texto = "") {
+  return normalizar(texto).replace(/\s+/g, "-");
 }
 
 function limparHtml(texto = "") {
@@ -39,6 +45,17 @@ function limparHtml(texto = "") {
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function decodificarHtml(texto = "") {
+  return String(texto || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\\u002F/g, "/")
+    .replace(/\\/g, "");
 }
 
 function contarPalavras(texto = "") {
@@ -89,13 +106,13 @@ function detectarTipo(titulo = "") {
   return "capitulo";
 }
 
-function extrairNumeroCapitulo(titulo = "", index = 0, tipo = "capitulo") {
+function extrairNumeroCapitulo(titulo = "", tipo = "capitulo") {
   if (tipo === "prologo") {
     return 0;
   }
 
   const busca = normalizar(titulo);
-  const match = busca.match(/\b(?:capitulo|cap|chapter)\s*\.?\s*(\d+)\b/i);
+  const match = busca.match(/\b(?:capitulo|cap|chapter)\s*(\d+)\b/i);
 
   if (match) {
     return Number(match[1]);
@@ -140,7 +157,7 @@ async function buscarJson(url) {
 async function buscarTextoParte(partId) {
   const urls = [
     `https://www.wattpad.com/apiv2/storytext?id=${partId}`,
-    `https://www.wattpad.com/v4/parts/${partId}/text`
+    `https://www.wattpad.com/${partId}`
   ];
 
   for (const url of urls) {
@@ -156,6 +173,120 @@ async function buscarTextoParte(partId) {
   }
 
   return "";
+}
+
+function extrairTituloDaPagina(html = "") {
+  const patterns = [
+    /property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
+    /<title[^>]*>([\s\S]*?)<\/title>/i,
+    /"title"\s*:\s*"([^"]+)"/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      return decodificarHtml(limparHtml(match[1]))
+        .replace(/\s*-\s*Wattpad\s*$/i, "")
+        .trim();
+    }
+  }
+
+  return "";
+}
+
+function extrairCapaDaPagina(html = "") {
+  const patterns = [
+    /property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+    /content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+    /"cover"\s*:\s*"([^"]+)"/i,
+    /"coverUrl"\s*:\s*"([^"]+)"/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      return decodificarHtml(match[1]);
+    }
+  }
+
+  return "";
+}
+
+function extrairSlugDaObra(html = "", storyId = "") {
+  const canonicalPatterns = [
+    /rel=["']canonical["'][^>]+href=["']([^"']+)["']/i,
+    /property=["']og:url["'][^>]+content=["']([^"']+)["']/i
+  ];
+
+  for (const pattern of canonicalPatterns) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      const url = decodificarHtml(match[1]);
+      const slugMatch = url.match(new RegExp(`story/${storyId}-([^?#"']+)`, "i"));
+
+      if (slugMatch?.[1]) {
+        return normalizarSlug(slugMatch[1]);
+      }
+    }
+  }
+
+  return "";
+}
+
+function extrairLinksDeCapitulos(html = "", storySlug = "") {
+  const encontrados = [];
+  const vistos = new Set();
+
+  const hrefRegex = /href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+  let match;
+
+  while ((match = hrefRegex.exec(html)) !== null) {
+    const hrefOriginal = decodificarHtml(match[1] || "");
+    const textoLink = limparHtml(decodificarHtml(match[2] || ""));
+
+    if (!hrefOriginal) {
+      continue;
+    }
+
+    const href = hrefOriginal.startsWith("http")
+      ? hrefOriginal
+      : `https://www.wattpad.com${hrefOriginal.startsWith("/") ? "" : "/"}${hrefOriginal}`;
+
+    const parteMatch = href.match(/wattpad\.com\/(\d+)-([^?#"']+)/i);
+
+    if (!parteMatch) {
+      continue;
+    }
+
+    const id = parteMatch[1];
+    const slug = normalizarSlug(parteMatch[2] || "");
+
+    if (!id || vistos.has(id)) {
+      continue;
+    }
+
+    if (storySlug) {
+      const slugCurto = storySlug.split("-").slice(0, 3).join("-");
+
+      if (!slug.includes(storySlug) && !slug.includes(slugCurto)) {
+        continue;
+      }
+    }
+
+    vistos.add(id);
+
+    encontrados.push({
+      id,
+      title: textoLink || parteMatch[2].replace(/-/g, " "),
+      url: href
+    });
+  }
+
+  return encontrados;
 }
 
 function extrairJsonNextData(html = "") {
@@ -180,57 +311,20 @@ function procurarPartesEmObjeto(valor, encontrados = []) {
   }
 
   if (Array.isArray(valor)) {
-    const pareceListaDePartes =
-      valor.length > 0 &&
-      valor.some((item) => {
-        return (
-          item &&
-          typeof item === "object" &&
-          (item.id || item.partId) &&
-          (item.title || item.name)
-        );
-      });
-
-    if (pareceListaDePartes) {
-      valor.forEach((item) => {
-        if (
-          item &&
-          typeof item === "object" &&
-          (item.id || item.partId) &&
-          (item.title || item.name)
-        ) {
-          encontrados.push(item);
-        }
-      });
-    }
-
     valor.forEach((item) => procurarPartesEmObjeto(item, encontrados));
     return encontrados;
   }
 
-  Object.entries(valor).forEach(([chave, conteudo]) => {
-    const chaveNormalizada = normalizar(chave);
+  const id = valor.id || valor.partId;
+  const titulo = valor.title || valor.name;
 
-    if (
-      Array.isArray(conteudo) &&
-      (chaveNormalizada === "parts" ||
-        chaveNormalizada === "publishedparts" ||
-        chaveNormalizada === "tableofcontents")
-    ) {
-      conteudo.forEach((item) => {
-        if (
-          item &&
-          typeof item === "object" &&
-          (item.id || item.partId) &&
-          (item.title || item.name)
-        ) {
-          encontrados.push(item);
-        }
-      });
-    }
+  if (id && titulo) {
+    encontrados.push(valor);
+  }
 
-    procurarPartesEmObjeto(conteudo, encontrados);
-  });
+  Object.values(valor).forEach((conteudo) =>
+    procurarPartesEmObjeto(conteudo, encontrados)
+  );
 
   return encontrados;
 }
@@ -259,7 +353,7 @@ function montarLinkParte(parte = {}) {
   }
 
   if (parte.url) {
-    return `https://www.wattpad.com${parte.url}`;
+    return `https://www.wattpad.com${String(parte.url).startsWith("/") ? "" : "/"}${parte.url}`;
   }
 
   const id = parte.id || parte.partId;
@@ -269,13 +363,14 @@ function montarLinkParte(parte = {}) {
 
 function converterParteEmCapitulo(parte = {}, index = 0) {
   const id = String(parte.id || parte.partId || "");
-  const titulo = parte.title || parte.name || `Capítulo ${index + 1}`;
+  const tituloBruto = parte.title || parte.name || `Capítulo ${index + 1}`;
+  const titulo = limparHtml(decodificarHtml(tituloBruto));
   const tipo = detectarTipo(titulo);
 
   return {
     idWattpad: id,
     titulo,
-    numero: extrairNumeroCapitulo(titulo, index, tipo),
+    numero: extrairNumeroCapitulo(titulo, tipo),
     tipo,
     linkWattpad: montarLinkParte(parte),
     totalPalavras: Number(
@@ -326,82 +421,47 @@ async function buscarPartesPelaApi(storyId) {
   return [];
 }
 
-function extrairObraDoJson(dados = {}) {
-  const encontrados = [];
-
-  function caminhar(valor) {
-    if (!valor || typeof valor !== "object") {
-      return;
-    }
-
-    if (Array.isArray(valor)) {
-      valor.forEach(caminhar);
-      return;
-    }
-
-    if (
-      (valor.title || valor.name) &&
-      (valor.cover || valor.coverUrl || valor.cover_url || valor.url)
-    ) {
-      encontrados.push(valor);
-    }
-
-    Object.values(valor).forEach(caminhar);
-  }
-
-  caminhar(dados);
-
-  const item = encontrados[0] || {};
-
-  return {
-    titulo: item.title || item.name || "",
-    capaUrl: item.cover || item.coverUrl || item.cover_url || "",
-    autor: item.user?.name || item.user?.username || item.author?.name || "",
-    userAutor: item.user?.username || item.author?.username || ""
-  };
-}
-
-function extrairCapaDoHtml(html = "") {
-  const patterns = [
-    /property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
-    /content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
-    /"cover"\s*:\s*"([^"]+)"/i,
-    /"coverUrl"\s*:\s*"([^"]+)"/i
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-
-    if (match?.[1]) {
-      return match[1].replace(/\\u002F/g, "/").replace(/\\/g, "");
-    }
-  }
-
-  return "";
-}
-
 async function buscarPartesPelaPagina(storyId) {
   const html = await buscarTexto(`https://www.wattpad.com/story/${storyId}`);
+  const titulo = extrairTituloDaPagina(html);
+  const capaUrl = extrairCapaDaPagina(html);
+  const storySlug = extrairSlugDaObra(html, storyId);
+
   const nextData = extrairJsonNextData(html);
 
   if (nextData) {
-    const partes = removerDuplicadosPorId(procurarPartesEmObjeto(nextData));
+    const partesJson = removerDuplicadosPorId(procurarPartesEmObjeto(nextData));
 
-    if (partes.length > 0) {
+    if (partesJson.length > 0) {
       return {
-        partes,
-        obra: extrairObraDoJson(nextData)
+        partes: partesJson,
+        obra: {
+          titulo,
+          capaUrl,
+          autor: "",
+          userAutor: ""
+        },
+        debug: {
+          metodo: "next-data",
+          storySlug
+        }
       };
     }
   }
 
+  const partesHtml = extrairLinksDeCapitulos(html, storySlug);
+
   return {
-    partes: [],
+    partes: removerDuplicadosPorId(partesHtml),
     obra: {
-      titulo: "",
-      capaUrl: extrairCapaDoHtml(html),
+      titulo,
+      capaUrl,
       autor: "",
       userAutor: ""
+    },
+    debug: {
+      metodo: "html-links",
+      storySlug
     }
   };
 }
@@ -417,9 +477,6 @@ export default async function handler(req, res) {
 
     const { link } = req.body || {};
     const storyId = extrairStoryId(link);
-
-    console.log("LINK RECEBIDO:", link);
-    console.log("STORY ID:", storyId);
 
     if (!storyId) {
       return res.status(400).json({
@@ -439,18 +496,23 @@ export default async function handler(req, res) {
       userAutor: ""
     };
 
+    let origem = "api";
+    let debugPagina = {};
     let partes = await buscarPartesPelaApi(storyId);
 
     if (!partes.length) {
+      origem = "pagina";
       const resultadoPagina = await buscarPartesPelaPagina(storyId);
       partes = resultadoPagina.partes;
       obra = resultadoPagina.obra || obra;
+      debugPagina = resultadoPagina.debug || {};
     } else {
       try {
         const resultadoPagina = await buscarPartesPelaPagina(storyId);
         obra = resultadoPagina.obra || obra;
+        debugPagina = resultadoPagina.debug || {};
       } catch {
-        // não trava se a página falhar
+        // não trava
       }
     }
 
@@ -463,6 +525,8 @@ export default async function handler(req, res) {
         debug: {
           linkRecebido: link || "",
           storyId,
+          origem,
+          ...debugPagina,
           partesEncontradas: 0
         }
       });
@@ -483,7 +547,7 @@ export default async function handler(req, res) {
             capitulo.totalParagrafos = contarParagrafos(textoParte);
           }
         } catch {
-          // mantém sem travar
+          // não trava
         }
       }
 
@@ -497,9 +561,10 @@ export default async function handler(req, res) {
       obra,
       capitulos,
       debug: {
-        origem: "api-wattpad-capitulos",
+        origem,
         linkRecebido: link || "",
         storyId,
+        ...debugPagina,
         brutosEncontrados: partes.length,
         depoisDoFiltro: capitulos.length
       }
