@@ -9,6 +9,7 @@ import {
 } from "../services/obrasService.js";
 import { salvarCapitulosImportados } from "../services/capitulosService.js";
 import { buscarDadosDaObraWattpad } from "../services/wattpadService.js";
+import { sincronizarTodasAsObrasComWattpad } from "../services/sincronizacaoWattpadService.js";
 
 const formularioInicial = {
   nome: "",
@@ -26,6 +27,7 @@ export default function Obras() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
 
@@ -165,6 +167,37 @@ export default function Obras() {
     }
   }
 
+  async function sincronizarTodas() {
+    if (obras.length === 0) {
+      setErro("Não há obras cadastradas para atualizar.");
+      return;
+    }
+
+    try {
+      setSincronizando(true);
+      setErro("");
+      setMensagem("Atualizando todas as obras com o Wattpad...");
+
+      const resumo = await sincronizarTodasAsObrasComWattpad(obras, {
+        onStatus: (status) => {
+          setMensagem(status.detalhe || status.titulo || "Atualizando obras...");
+        }
+      });
+
+      await carregarObras();
+
+      setMensagem(
+        `Atualização concluída. ${resumo.criados} capítulo(s) novo(s), ${resumo.atualizados} atualizado(s), ${resumo.ignoradas} obra(s) ignorada(s), ${resumo.erros} erro(s).`
+      );
+    } catch (error) {
+      console.error(error);
+      setErro(`Não consegui atualizar as obras. Motivo: ${error.message}`);
+      setMensagem("");
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   async function removerObra(obra) {
     const confirmar = window.confirm(
       `Tem certeza que deseja excluir a obra "${obra.nome}"?`
@@ -194,9 +227,20 @@ export default function Obras() {
           <h2>Obras</h2>
         </div>
 
-        <button className="primary-button" type="button" onClick={abrirNovaObra}>
-          Nova obra
-        </button>
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={sincronizarTodas}
+            disabled={sincronizando || carregando || obras.length === 0}
+          >
+            {sincronizando ? "Atualizando..." : "Atualizar todas do Wattpad"}
+          </button>
+
+          <button className="primary-button" type="button" onClick={abrirNovaObra}>
+            Nova obra
+          </button>
+        </div>
       </div>
 
       {erro ? <p className="form-error">{erro}</p> : null}
@@ -328,8 +372,7 @@ export default function Obras() {
           <div>
             <h3>Obras cadastradas</h3>
             <p>
-              Ao cadastrar uma obra nova, a capa e os capítulos serão buscados
-              automaticamente no Wattpad.
+              A atualização automática do Wattpad também acontece ao preparar uma conferência.
             </p>
           </div>
         </div>
@@ -362,61 +405,4 @@ export default function Obras() {
                           <img src={obra.capaUrl} alt={`Capa de ${obra.nome}`} />
                         ) : (
                           <div className="cover-placeholder">📕</div>
-                        )}
-
-                        <div>
-                          <strong>{obra.nome}</strong>
-                          <span>{obra.linkWattpad}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td>
-                      <strong>{obra.autor || "Não informado"}</strong>
-                      <span className="table-subtext">
-                        {obra.userAutor || "Sem user"}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span className={`status-badge ${obra.status || "ativa"}`}>
-                        {obra.status || "ativa"}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div className="table-actions">
-                        <Link
-                          className="mini-button primary"
-                          to={`/obras/${obra.id}`}
-                        >
-                          Capítulos
-                        </Link>
-
-                        <button
-                          className="mini-button"
-                          type="button"
-                          onClick={() => abrirEdicao(obra)}
-                        >
-                          Editar
-                        </button>
-
-                        <button
-                          className="mini-button danger"
-                          type="button"
-                          onClick={() => removerObra(obra)}
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
+                       
