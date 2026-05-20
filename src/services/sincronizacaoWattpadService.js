@@ -1,5 +1,4 @@
 import {
-  atualizarCapitulo,
   criarCapitulo,
   listarCapitulos
 } from "./capitulosService.js";
@@ -15,12 +14,12 @@ function normalizar(texto = "") {
     .trim();
 }
 
-function criarChaveCapitulo(capitulo = {}) {
-  if (capitulo.linkWattpad) {
-    return `link:${String(capitulo.linkWattpad).trim()}`;
-  }
+function criarChavePorLink(link = "") {
+  return String(link || "").trim().toLowerCase();
+}
 
-  return `titulo:${normalizar(capitulo.titulo || "")}`;
+function criarChavePorTitulo(titulo = "") {
+  return normalizar(titulo || "");
 }
 
 function tratarCapituloImportado(capitulo = {}, ordem = 0) {
@@ -36,16 +35,24 @@ function tratarCapituloImportado(capitulo = {}, ordem = 0) {
   };
 }
 
-function dadosMudaram(capituloSalvo = {}, capituloNovo = {}) {
-  return (
-    String(capituloSalvo.titulo || "") !== String(capituloNovo.titulo || "") ||
-    String(capituloSalvo.linkWattpad || "") !== String(capituloNovo.linkWattpad || "") ||
-    String(capituloSalvo.tipo || "") !== String(capituloNovo.tipo || "") ||
-    Number(capituloSalvo.numero ?? -999) !== Number(capituloNovo.numero ?? -999) ||
-    Number(capituloSalvo.totalPalavras || 0) !== Number(capituloNovo.totalPalavras || 0) ||
-    Number(capituloSalvo.totalParagrafos || 0) !== Number(capituloNovo.totalParagrafos || 0) ||
-    Number(capituloSalvo.ordem || 0) !== Number(capituloNovo.ordem || 0)
-  );
+function capituloJaExiste(capituloNovo = {}, capitulosSalvos = []) {
+  const linkNovo = criarChavePorLink(capituloNovo.linkWattpad);
+  const tituloNovo = criarChavePorTitulo(capituloNovo.titulo);
+
+  return capitulosSalvos.some((capituloSalvo) => {
+    const linkSalvo = criarChavePorLink(capituloSalvo.linkWattpad);
+    const tituloSalvo = criarChavePorTitulo(capituloSalvo.titulo);
+
+    if (linkNovo && linkSalvo && linkNovo === linkSalvo) {
+      return true;
+    }
+
+    if (!linkNovo && !linkSalvo && tituloNovo && tituloNovo === tituloSalvo) {
+      return true;
+    }
+
+    return false;
+  });
 }
 
 export async function sincronizarObraComWattpad(obra, opcoes = {}) {
@@ -83,49 +90,34 @@ export async function sincronizarObraComWattpad(obra, opcoes = {}) {
   }
 
   const capitulosSalvos = await listarCapitulos(obra.id);
-  const mapaSalvos = new Map();
-
-  capitulosSalvos.forEach((capitulo) => {
-    mapaSalvos.set(criarChaveCapitulo(capitulo), capitulo);
-  });
 
   let criados = 0;
-  let atualizados = 0;
 
   for (let index = 0; index < capitulosWattpad.length; index += 1) {
     const capituloTratado = tratarCapituloImportado(capitulosWattpad[index], index);
-    const chave = criarChaveCapitulo(capituloTratado);
-    const existente = mapaSalvos.get(chave);
 
-    if (!existente) {
-      await criarCapitulo(obra.id, capituloTratado);
-      criados += 1;
+    if (capituloJaExiste(capituloTratado, capitulosSalvos)) {
       continue;
     }
 
-    if (dadosMudaram(existente, capituloTratado)) {
-      await atualizarCapitulo(obra.id, existente.id, {
-        ...existente,
-        ...capituloTratado
-      });
-
-      atualizados += 1;
-    }
+    await criarCapitulo(obra.id, capituloTratado);
+    capitulosSalvos.push(capituloTratado);
+    criados += 1;
   }
 
   onStatus?.({
     tipo: "sucesso",
     titulo: "Obra sincronizada",
-    detalhe: `${obra.nome}: ${criados} novo(s), ${atualizados} atualizado(s).`
+    detalhe: `${obra.nome}: ${criados} novo(s).`
   });
 
   return {
     sucesso: true,
     ignorado: false,
     criados,
-    atualizados,
+    atualizados: 0,
     totalWattpad: capitulosWattpad.length,
-    mensagem: `${criados} novo(s), ${atualizados} atualizado(s).`
+    mensagem: `${criados} novo(s).`
   };
 }
 
@@ -153,7 +145,6 @@ export async function sincronizarTodasAsObrasComWattpad(obras = [], opcoes = {})
       }
 
       resumo.criados += resultado.criados || 0;
-      resumo.atualizados += resultado.atualizados || 0;
     } catch (error) {
       console.error(error);
 
