@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+
 import {
   atualizarCapaObra,
   atualizarObra,
@@ -7,6 +8,7 @@ import {
   excluirObra,
   listarObras
 } from "../services/obrasService.js";
+
 import { salvarCapitulosImportados } from "../services/capitulosService.js";
 import { buscarDadosDaObraWattpad } from "../services/wattpadService.js";
 import { sincronizarTodasAsObrasComWattpad } from "../services/sincronizacaoWattpadService.js";
@@ -168,35 +170,22 @@ export default function Obras() {
   }
 
   async function sincronizarTodas() {
-    if (obras.length === 0) {
-      setMensagem("Não há obras cadastradas para atualizar.");
-      return;
-    }
-
-    const confirmar = window.confirm(
-      "Deseja atualizar todas as obras cadastradas com os capítulos mais recentes do Wattpad?"
-    );
-
-    if (!confirmar) {
-      return;
-    }
-
     try {
       setSincronizando(true);
       setErro("");
-      setMensagem("Atualizando todas as obras com o Wattpad...");
+      setMensagem("Atualizando todas as obras cadastradas pelo Wattpad...");
 
       const resumo = await sincronizarTodasAsObrasComWattpad(obras);
 
-      await carregarObras();
-
       setMensagem(
-        `Atualização concluída: ${resumo.sincronizadas} obra(s) sincronizada(s), ${resumo.ignoradas} ignorada(s), ${resumo.criados} capítulo(s) novo(s), ${resumo.atualizados} atualizado(s), ${resumo.erros} erro(s).`
+        `Atualização concluída: ${resumo.criados} capítulo(s) novo(s), ${resumo.atualizados} atualizado(s), ${resumo.ignoradas} obra(s) ignorada(s), ${resumo.erros} erro(s).`
       );
+
+      await carregarObras();
     } catch (error) {
       console.error(error);
-      setErro(`Não consegui atualizar todas as obras. Motivo: ${error.message}`);
       setMensagem("");
+      setErro(`Não consegui atualizar todas as obras. Motivo: ${error.message}`);
     } finally {
       setSincronizando(false);
     }
@@ -236,12 +225,17 @@ export default function Obras() {
             className="secondary-button"
             type="button"
             onClick={sincronizarTodas}
-            disabled={sincronizando || carregando || obras.length === 0}
+            disabled={sincronizando || salvando || carregando || obras.length === 0}
           >
             {sincronizando ? "Atualizando..." : "Atualizar todas do Wattpad"}
           </button>
 
-          <button className="primary-button" type="button" onClick={abrirNovaObra}>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={abrirNovaObra}
+            disabled={sincronizando}
+          >
             Nova obra
           </button>
         </div>
@@ -377,7 +371,7 @@ export default function Obras() {
             <h3>Obras cadastradas</h3>
             <p>
               Ao cadastrar uma obra nova, a capa e os capítulos serão buscados
-              automaticamente no Wattpad. O botão geral atualiza todas as obras.
+              automaticamente no Wattpad. O botão acima atualiza todas as obras já cadastradas.
             </p>
           </div>
         </div>
@@ -445,6 +439,7 @@ export default function Obras() {
                           className="mini-button"
                           type="button"
                           onClick={() => abrirEdicao(obra)}
+                          disabled={sincronizando}
                         >
                           Editar
                         </button>
@@ -453,6 +448,7 @@ export default function Obras() {
                           className="mini-button danger"
                           type="button"
                           onClick={() => removerObra(obra)}
+                          disabled={sincronizando}
                         >
                           Excluir
                         </button>
