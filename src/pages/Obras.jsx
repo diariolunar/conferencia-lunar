@@ -11,7 +11,6 @@ import {
 
 import { salvarCapitulosImportados } from "../services/capitulosService.js";
 import { buscarDadosDaObraWattpad } from "../services/wattpadService.js";
-import { sincronizarTodasAsObrasComWattpad } from "../services/sincronizacaoWattpadService.js";
 
 const formularioInicial = {
   nome: "",
@@ -29,10 +28,8 @@ export default function Obras() {
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
-  const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
-  const [errosSincronizacao, setErrosSincronizacao] = useState([]);
 
   useEffect(() => {
     carregarObras();
@@ -47,8 +44,9 @@ export default function Obras() {
       setObras(lista);
     } catch (error) {
       console.error(error);
+
       setErro(
-        "Não consegui carregar as obras. Verifique se o Firebase está configurado."
+        "Não consegui carregar as obras. Verifique o Firebase."
       );
     } finally {
       setCarregando(false);
@@ -61,7 +59,6 @@ export default function Obras() {
     setMostrarFormulario(true);
     setErro("");
     setMensagem("");
-    setErrosSincronizacao([]);
   }
 
   function abrirEdicao(obra) {
@@ -78,7 +75,6 @@ export default function Obras() {
     setMostrarFormulario(true);
     setErro("");
     setMensagem("");
-    setErrosSincronizacao([]);
   }
 
   function fecharFormulario() {
@@ -96,29 +92,36 @@ export default function Obras() {
   }
 
   async function importarDadosAutomaticamente(obraId, linkWattpad) {
-    setMensagem("Obra salva. Buscando capa e capítulos do Wattpad...");
+    setMensagem(
+      "Obra salva. Tentando buscar capa e capítulos..."
+    );
 
-    const dadosWattpad = await buscarDadosDaObraWattpad(linkWattpad);
+    const dadosWattpad = await buscarDadosDaObraWattpad(
+      linkWattpad
+    );
 
     if (dadosWattpad.obra?.capaUrl) {
-      await atualizarCapaObra(obraId, dadosWattpad.obra.capaUrl);
+      await atualizarCapaObra(
+        obraId,
+        dadosWattpad.obra.capaUrl
+      );
     }
 
     if (!dadosWattpad.capitulos.length) {
       setMensagem(
         "Obra salva, mas nenhum capítulo foi encontrado automaticamente."
       );
+
       return;
     }
 
-    await salvarCapitulosImportados(obraId, dadosWattpad.capitulos);
-
-    const capaTexto = dadosWattpad.obra?.capaUrl
-      ? "Capa encontrada"
-      : "Capa não encontrada";
+    await salvarCapitulosImportados(
+      obraId,
+      dadosWattpad.capitulos
+    );
 
     setMensagem(
-      `Obra salva. ${capaTexto}. ${dadosWattpad.capitulos.length} capítulo(s) importado(s) automaticamente.`
+      `Obra salva com ${dadosWattpad.capitulos.length} capítulo(s) importado(s).`
     );
   }
 
@@ -131,7 +134,7 @@ export default function Obras() {
     }
 
     if (!formulario.linkWattpad.trim()) {
-      setErro("Informe o link da obra no Wattpad.");
+      setErro("Informe o link do Wattpad.");
       return;
     }
 
@@ -139,21 +142,29 @@ export default function Obras() {
       setSalvando(true);
       setErro("");
       setMensagem("");
-      setErrosSincronizacao([]);
 
       if (obraEditando) {
-        await atualizarObra(obraEditando.id, formulario);
+        await atualizarObra(
+          obraEditando.id,
+          formulario
+        );
+
         setMensagem("Obra atualizada com sucesso.");
       } else {
         const obraCriada = await criarObra(formulario);
 
         try {
-          await importarDadosAutomaticamente(obraCriada.id, formulario.linkWattpad);
+          await importarDadosAutomaticamente(
+            obraCriada.id,
+            formulario.linkWattpad
+          );
         } catch (error) {
           console.error(error);
+
           setMensagem("");
+
           setErro(
-            `A obra foi salva, mas não consegui buscar capa/capítulos automaticamente. Motivo: ${error.message}`
+            `A obra foi salva, mas não consegui importar automaticamente. Motivo: ${error.message}`
           );
         }
       }
@@ -165,42 +176,18 @@ export default function Obras() {
       setMostrarFormulario(false);
     } catch (error) {
       console.error(error);
+
       setErro(
-        "Não consegui salvar a obra. Verifique se o Firebase está configurado corretamente."
+        "Não consegui salvar a obra."
       );
     } finally {
       setSalvando(false);
     }
   }
 
-  async function sincronizarTodas() {
-    try {
-      setSincronizando(true);
-      setErro("");
-      setMensagem("Atualizando todas as obras cadastradas pelo Wattpad...");
-      setErrosSincronizacao([]);
-
-      const resumo = await sincronizarTodasAsObrasComWattpad(obras);
-
-      setMensagem(
-        `Atualização concluída: ${resumo.criados} capítulo(s) novo(s), ${resumo.atualizados} atualizado(s), ${resumo.ignoradas} obra(s) ignorada(s), ${resumo.erros} erro(s).`
-      );
-
-      setErrosSincronizacao(resumo.detalhesErros || []);
-
-      await carregarObras();
-    } catch (error) {
-      console.error(error);
-      setMensagem("");
-      setErro(`Não consegui atualizar todas as obras. Motivo: ${error.message}`);
-    } finally {
-      setSincronizando(false);
-    }
-  }
-
   async function removerObra(obra) {
     const confirmar = window.confirm(
-      `Tem certeza que deseja excluir a obra "${obra.nome}"?`
+      `Tem certeza que deseja excluir "${obra.nome}"?`
     );
 
     if (!confirmar) {
@@ -210,13 +197,18 @@ export default function Obras() {
     try {
       setErro("");
       setMensagem("");
-      setErrosSincronizacao([]);
+
       await excluirObra(obra.id);
+
       await carregarObras();
+
       setMensagem("Obra excluída com sucesso.");
     } catch (error) {
       console.error(error);
-      setErro("Não consegui excluir a obra.");
+
+      setErro(
+        "Não consegui excluir a obra."
+      );
     }
   }
 
@@ -228,56 +220,37 @@ export default function Obras() {
           <h2>Obras</h2>
         </div>
 
-        <div className="button-row">
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={sincronizarTodas}
-            disabled={sincronizando || salvando || carregando || obras.length === 0}
-          >
-            {sincronizando ? "Atualizando..." : "Atualizar todas do Wattpad"}
-          </button>
-
-          <button
-            className="primary-button"
-            type="button"
-            onClick={abrirNovaObra}
-            disabled={sincronizando}
-          >
-            Nova obra
-          </button>
-        </div>
+        <button
+          className="primary-button"
+          type="button"
+          onClick={abrirNovaObra}
+        >
+          Nova obra
+        </button>
       </div>
 
-      {erro ? <p className="form-error">{erro}</p> : null}
-      {mensagem ? <p className="form-success">{mensagem}</p> : null}
+      {erro ? (
+        <p className="form-error">{erro}</p>
+      ) : null}
 
-      {errosSincronizacao.length > 0 ? (
-        <div className="panel">
-          <h3>Erros da atualização</h3>
-          <p className="muted">
-            Essas obras não conseguiram atualizar. Confira se o link salvo é o link da obra, não de capítulo, lista ou perfil.
-          </p>
-
-          <div className="reason-list">
-            {errosSincronizacao.map((item, index) => (
-              <p key={`${item.obra}-${index}`}>
-                • <strong>{item.obra}</strong>: {item.erro}
-                {item.link ? ` — ${item.link}` : ""}
-              </p>
-            ))}
-          </div>
-        </div>
+      {mensagem ? (
+        <p className="form-success">{mensagem}</p>
       ) : null}
 
       {mostrarFormulario ? (
         <div className="panel">
           <div className="section-title-row">
             <div>
-              <h3>{obraEditando ? "Editar obra" : "Nova obra"}</h3>
+              <h3>
+                {obraEditando
+                  ? "Editar obra"
+                  : "Nova obra"}
+              </h3>
+
               <p>
-                Cadastre a obra pelo link do Wattpad. Depois de salvar, o
-                sistema tenta buscar a capa e os capítulos automaticamente.
+                O sistema pode tentar importar capítulos
+                automaticamente, mas você também pode
+                cadastrar manualmente depois.
               </p>
             </div>
 
@@ -291,77 +264,113 @@ export default function Obras() {
             </button>
           </div>
 
-          <form className="form-grid" onSubmit={salvarObra}>
+          <form
+            className="form-grid"
+            onSubmit={salvarObra}
+          >
             <label className="field">
               <span>Nome da obra *</span>
+
               <input
                 type="text"
                 value={formulario.nome}
-                onChange={(event) => atualizarCampo("nome", event.target.value)}
-                placeholder="Ex: Cidade de Alfas"
+                onChange={(event) =>
+                  atualizarCampo(
+                    "nome",
+                    event.target.value
+                  )
+                }
+                placeholder="Ex: Vale da Estrela"
                 disabled={salvando}
               />
             </label>
 
             <label className="field">
               <span>Autor</span>
+
               <input
                 type="text"
                 value={formulario.autor}
-                onChange={(event) => atualizarCampo("autor", event.target.value)}
-                placeholder="Ex: Emily Oliveira"
+                onChange={(event) =>
+                  atualizarCampo(
+                    "autor",
+                    event.target.value
+                  )
+                }
+                placeholder="Nome do autor"
                 disabled={salvando}
               />
             </label>
 
             <label className="field">
-              <span>User do autor no Wattpad</span>
+              <span>User do autor</span>
+
               <input
                 type="text"
                 value={formulario.userAutor}
                 onChange={(event) =>
-                  atualizarCampo("userAutor", event.target.value)
+                  atualizarCampo(
+                    "userAutor",
+                    event.target.value
+                  )
                 }
-                placeholder="Ex: EmilyOliveira150"
+                placeholder="@user"
                 disabled={salvando}
               />
             </label>
 
             <label className="field">
               <span>Status</span>
+
               <select
                 value={formulario.status}
-                onChange={(event) => atualizarCampo("status", event.target.value)}
+                onChange={(event) =>
+                  atualizarCampo(
+                    "status",
+                    event.target.value
+                  )
+                }
                 disabled={salvando}
               >
                 <option value="ativa">Ativa</option>
                 <option value="pausada">Pausada</option>
-                <option value="finalizada">Finalizada</option>
+                <option value="finalizada">
+                  Finalizada
+                </option>
                 <option value="inativa">Inativa</option>
               </select>
             </label>
 
             <label className="field field-full">
-              <span>Link da obra no Wattpad *</span>
+              <span>Link do Wattpad *</span>
+
               <input
                 type="url"
                 value={formulario.linkWattpad}
                 onChange={(event) =>
-                  atualizarCampo("linkWattpad", event.target.value)
+                  atualizarCampo(
+                    "linkWattpad",
+                    event.target.value
+                  )
                 }
                 placeholder="https://www.wattpad.com/story/..."
-                disabled={salvando || Boolean(obraEditando)}
+                disabled={
+                  salvando || Boolean(obraEditando)
+                }
               />
             </label>
 
             <label className="field field-full">
               <span>Observações</span>
+
               <textarea
                 value={formulario.observacoes}
                 onChange={(event) =>
-                  atualizarCampo("observacoes", event.target.value)
+                  atualizarCampo(
+                    "observacoes",
+                    event.target.value
+                  )
                 }
-                placeholder="Alguma regra ou anotação sobre essa obra..."
                 rows="4"
                 disabled={salvando}
               />
@@ -377,11 +386,13 @@ export default function Obras() {
                 Cancelar
               </button>
 
-              <button className="primary-button" type="submit" disabled={salvando}>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={salvando}
+              >
                 {salvando
-                  ? obraEditando
-                    ? "Salvando..."
-                    : "Salvando e buscando dados..."
+                  ? "Salvando..."
                   : obraEditando
                     ? "Salvar edição"
                     : "Cadastrar obra"}
@@ -395,19 +406,26 @@ export default function Obras() {
         <div className="section-title-row">
           <div>
             <h3>Obras cadastradas</h3>
+
             <p>
-              Ao cadastrar uma obra nova, a capa e os capítulos serão buscados
-              automaticamente no Wattpad. O botão acima atualiza todas as obras já cadastradas.
+              Gerencie suas obras cadastradas.
             </p>
           </div>
         </div>
 
         {carregando ? (
-          <p className="muted">Carregando obras...</p>
+          <p className="muted">
+            Carregando obras...
+          </p>
         ) : obras.length === 0 ? (
           <div className="empty-state compact">
-            <h3>Nenhuma obra cadastrada ainda</h3>
-            <p>Clique em “Nova obra” para começar.</p>
+            <h3>
+              Nenhuma obra cadastrada
+            </h3>
+
+            <p>
+              Clique em “Nova obra” para começar.
+            </p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -427,27 +445,46 @@ export default function Obras() {
                     <td>
                       <div className="obra-cell">
                         {obra.capaUrl ? (
-                          <img src={obra.capaUrl} alt={`Capa de ${obra.nome}`} />
+                          <img
+                            src={obra.capaUrl}
+                            alt={obra.nome}
+                          />
                         ) : (
-                          <div className="cover-placeholder">📕</div>
+                          <div className="cover-placeholder">
+                            📕
+                          </div>
                         )}
 
                         <div>
-                          <strong>{obra.nome}</strong>
-                          <span>{obra.linkWattpad}</span>
+                          <strong>
+                            {obra.nome}
+                          </strong>
+
+                          <span>
+                            {obra.linkWattpad}
+                          </span>
                         </div>
                       </div>
                     </td>
 
                     <td>
-                      <strong>{obra.autor || "Não informado"}</strong>
+                      <strong>
+                        {obra.autor ||
+                          "Não informado"}
+                      </strong>
+
                       <span className="table-subtext">
-                        {obra.userAutor || "Sem user"}
+                        {obra.userAutor ||
+                          "Sem user"}
                       </span>
                     </td>
 
                     <td>
-                      <span className={`status-badge ${obra.status || "ativa"}`}>
+                      <span
+                        className={`status-badge ${
+                          obra.status || "ativa"
+                        }`}
+                      >
                         {obra.status || "ativa"}
                       </span>
                     </td>
@@ -464,8 +501,9 @@ export default function Obras() {
                         <button
                           className="mini-button"
                           type="button"
-                          onClick={() => abrirEdicao(obra)}
-                          disabled={sincronizando}
+                          onClick={() =>
+                            abrirEdicao(obra)
+                          }
                         >
                           Editar
                         </button>
@@ -473,8 +511,9 @@ export default function Obras() {
                         <button
                           className="mini-button danger"
                           type="button"
-                          onClick={() => removerObra(obra)}
-                          disabled={sincronizando}
+                          onClick={() =>
+                            removerObra(obra)
+                          }
                         >
                           Excluir
                         </button>
