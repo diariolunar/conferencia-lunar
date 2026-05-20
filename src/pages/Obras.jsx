@@ -32,6 +32,7 @@ export default function Obras() {
   const [sincronizando, setSincronizando] = useState(false);
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
+  const [errosSincronizacao, setErrosSincronizacao] = useState([]);
 
   useEffect(() => {
     carregarObras();
@@ -60,6 +61,7 @@ export default function Obras() {
     setMostrarFormulario(true);
     setErro("");
     setMensagem("");
+    setErrosSincronizacao([]);
   }
 
   function abrirEdicao(obra) {
@@ -76,6 +78,7 @@ export default function Obras() {
     setMostrarFormulario(true);
     setErro("");
     setMensagem("");
+    setErrosSincronizacao([]);
   }
 
   function fecharFormulario() {
@@ -136,6 +139,7 @@ export default function Obras() {
       setSalvando(true);
       setErro("");
       setMensagem("");
+      setErrosSincronizacao([]);
 
       if (obraEditando) {
         await atualizarObra(obraEditando.id, formulario);
@@ -174,12 +178,15 @@ export default function Obras() {
       setSincronizando(true);
       setErro("");
       setMensagem("Atualizando todas as obras cadastradas pelo Wattpad...");
+      setErrosSincronizacao([]);
 
       const resumo = await sincronizarTodasAsObrasComWattpad(obras);
 
       setMensagem(
         `Atualização concluída: ${resumo.criados} capítulo(s) novo(s), ${resumo.atualizados} atualizado(s), ${resumo.ignoradas} obra(s) ignorada(s), ${resumo.erros} erro(s).`
       );
+
+      setErrosSincronizacao(resumo.detalhesErros || []);
 
       await carregarObras();
     } catch (error) {
@@ -203,6 +210,7 @@ export default function Obras() {
     try {
       setErro("");
       setMensagem("");
+      setErrosSincronizacao([]);
       await excluirObra(obra.id);
       await carregarObras();
       setMensagem("Obra excluída com sucesso.");
@@ -243,6 +251,24 @@ export default function Obras() {
 
       {erro ? <p className="form-error">{erro}</p> : null}
       {mensagem ? <p className="form-success">{mensagem}</p> : null}
+
+      {errosSincronizacao.length > 0 ? (
+        <div className="panel">
+          <h3>Erros da atualização</h3>
+          <p className="muted">
+            Essas obras não conseguiram atualizar. Confira se o link salvo é o link da obra, não de capítulo, lista ou perfil.
+          </p>
+
+          <div className="reason-list">
+            {errosSincronizacao.map((item, index) => (
+              <p key={`${item.obra}-${index}`}>
+                • <strong>{item.obra}</strong>: {item.erro}
+                {item.link ? ` — ${item.link}` : ""}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {mostrarFormulario ? (
         <div className="panel">
