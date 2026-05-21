@@ -1,0 +1,113 @@
+@media (max-width: 1400px) {
+  .dashboard-grid,
+  .obras-grid,
+  .history-dashboard-grid,
+  .weekly-panel {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .member-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    height: auto;
+    position: relative;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page-content {
+    padding: 24px;
+  }
+
+  .obra-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid,
+  .obras-grid,
+  .history-dashboard-grid,
+  .weekly-panel,
+  .member-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .history-card-grid,
+  .history-chapter-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .page-header,
+  .section-title-row,
+  .plano-leitura-header,
+  .history-card-header,
+  .history-work-item,
+  .history-chapter-header,
+  .member-detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-grid,
+  .obras-grid,
+  .history-dashboard-grid,
+  .weekly-panel,
+  .member-grid,
+  .history-card-grid,
+  .history-chapter-metrics,
+  .mini-stats,
+  .form-grid,
+  .history-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .app-header {
+    padding: 18px;
+    height: auto;
+  }
+
+  .page-content {
+    padding: 18px;
+  }
+
+  .obra-info-panel {
+    flex-direction: column;
+  }
+
+  .obra-cover-large {
+    width: 100%;
+    max-width: 240px;
+  }
+
+  .modal-card {
+    width: calc(100% - 24px);
+    padding: 22px;
+  }
+
+  .form-actions,
+  .button-row,
+  .history-actions,
+  .table-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .ghost-button,
+  .danger-button,
+  .mini-button {
+    width: 100%;
+  }
+}

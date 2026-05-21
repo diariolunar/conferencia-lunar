@@ -1,0 +1,96 @@
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.data-table thead th {
+  text-align: left;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table tbody td {
+  padding: 18px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: top;
+}
+
+.data-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.table-subtext {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.table-empty {
+  text-align: center;
+  padding: 36px 20px;
+  color: var(--muted);
+}
+
+.rules-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rules-table td {
+  padding: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rules-table td:first-child {
+  width: 320px;
+  color: var(--muted);
+}
+
+.comments-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.comment-preview-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.comment-preview-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.comment-preview-card p {
+  margin: 0;
+  color: #d1d5db;
+  line-height: 1.6;
+}
+
+.comment-preview-card small {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+}

@@ -1,0 +1,247 @@
+:root {
+  --background: #0b0b12;
+
+  --panel: #12121c;
+  --panel-light: #1a1a28;
+
+  --border: rgba(255, 255, 255, 0.08);
+
+  --text: #f5f5fa;
+  --muted: #9ca3af;
+
+  --primary: #7c3aed;
+  --primary-dark: #5b21b6;
+
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+
+  --shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35);
+
+  --radius: 18px;
+
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  color: var(--text);
+  background: var(--background);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: var(--background);
+}
+
+body {
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(124, 58, 237, 0.15), transparent 30%),
+    var(--background);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.page-header h2 {
+  margin: 4px 0 0;
+  font-size: 2rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 24px;
+}
+
+.empty-state.compact {
+  padding: 32px 16px;
+}
+
+.empty-inline {
+  padding: 18px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+}
+
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.section-title-row h3 {
+  margin: 0 0 6px;
+}
+
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.primary-button {
+  background: var(--primary);
+  color: white;
+}
+
+.primary-button:hover {
+  background: var(--primary-dark);
+}
+
+.secondary-button {
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+}
+
+.secondary-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ghost-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: white;
+}
+
+.ghost-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.danger-button {
+  background: var(--danger);
+  color: white;
+}
+
+.danger-button:hover {
+  filter: brightness(1.05);
+}
+
+.form-error,
+.form-success {
+  padding: 14px 18px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.form-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+.form-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+
+.status-badge,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.status-pill.success,
+.status-badge.aprovado {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+}
+
+.status-pill.danger,
+.status-badge.reprovado {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+}
+
+.status-pill.pending {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d;
+}
+
+.status-pill.neutral {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d1d5db;
+}

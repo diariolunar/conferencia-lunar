@@ -1,0 +1,118 @@
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field span {
+  font-size: 0.92rem;
+  color: #d1d5db;
+  font-weight: 600;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+
+  border: 1px solid var(--border);
+
+  background: rgba(255, 255, 255, 0.04);
+
+  color: white;
+
+  border-radius: 14px;
+
+  padding: 14px 16px;
+
+  outline: none;
+
+  transition: 0.2s ease;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: rgba(124, 58, 237, 0.7);
+  box-shadow:
+    0 0 0 4px rgba(124, 58, 237, 0.15);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.history-filters {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+
+  background: rgba(0, 0, 0, 0.7);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  z-index: 999;
+}
+
+.modal-card {
+  width: min(100%, 620px);
+
+  background: var(--panel);
+
+  border: 1px solid var(--border);
+
+  border-radius: 24px;
+
+  padding: 28px;
+
+  box-shadow: var(--shadow);
+}
+
+.modal-card h3 {
+  margin-top: 0;
+}
+
+.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.checkbox-field input {
+  width: auto;
+}
+
+.inline-fields {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.inline-fields .field {
+  flex: 1;
+  min-width: 180px;
+}
