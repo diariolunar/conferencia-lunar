@@ -2,15 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
-  atualizarCapaObra,
   atualizarObra,
   criarObra,
   excluirObra,
   listarObras
 } from "../services/obrasService.js";
-
-import { salvarCapitulosImportados } from "../services/capitulosService.js";
-import { buscarDadosDaObraWattpad } from "../services/wattpadService.js";
 
 const formularioInicial = {
   nome: "",
@@ -44,10 +40,7 @@ export default function Obras() {
       setObras(lista);
     } catch (error) {
       console.error(error);
-
-      setErro(
-        "Não consegui carregar as obras. Verifique o Firebase."
-      );
+      setErro("Não consegui carregar as obras.");
     } finally {
       setCarregando(false);
     }
@@ -91,40 +84,6 @@ export default function Obras() {
     }));
   }
 
-  async function importarDadosAutomaticamente(obraId, linkWattpad) {
-    setMensagem(
-      "Obra salva. Tentando buscar capa e capítulos..."
-    );
-
-    const dadosWattpad = await buscarDadosDaObraWattpad(
-      linkWattpad
-    );
-
-    if (dadosWattpad.obra?.capaUrl) {
-      await atualizarCapaObra(
-        obraId,
-        dadosWattpad.obra.capaUrl
-      );
-    }
-
-    if (!dadosWattpad.capitulos.length) {
-      setMensagem(
-        "Obra salva, mas nenhum capítulo foi encontrado automaticamente."
-      );
-
-      return;
-    }
-
-    await salvarCapitulosImportados(
-      obraId,
-      dadosWattpad.capitulos
-    );
-
-    setMensagem(
-      `Obra salva com ${dadosWattpad.capitulos.length} capítulo(s) importado(s).`
-    );
-  }
-
   async function salvarObra(event) {
     event.preventDefault();
 
@@ -144,29 +103,11 @@ export default function Obras() {
       setMensagem("");
 
       if (obraEditando) {
-        await atualizarObra(
-          obraEditando.id,
-          formulario
-        );
-
+        await atualizarObra(obraEditando.id, formulario);
         setMensagem("Obra atualizada com sucesso.");
       } else {
-        const obraCriada = await criarObra(formulario);
-
-        try {
-          await importarDadosAutomaticamente(
-            obraCriada.id,
-            formulario.linkWattpad
-          );
-        } catch (error) {
-          console.error(error);
-
-          setMensagem("");
-
-          setErro(
-            `A obra foi salva, mas não consegui importar automaticamente. Motivo: ${error.message}`
-          );
-        }
+        await criarObra(formulario);
+        setMensagem("Obra cadastrada com sucesso. Agora cadastre os capítulos manualmente.");
       }
 
       await carregarObras();
@@ -176,10 +117,7 @@ export default function Obras() {
       setMostrarFormulario(false);
     } catch (error) {
       console.error(error);
-
-      setErro(
-        "Não consegui salvar a obra."
-      );
+      setErro("Não consegui salvar a obra.");
     } finally {
       setSalvando(false);
     }
@@ -199,16 +137,12 @@ export default function Obras() {
       setMensagem("");
 
       await excluirObra(obra.id);
-
       await carregarObras();
 
       setMensagem("Obra excluída com sucesso.");
     } catch (error) {
       console.error(error);
-
-      setErro(
-        "Não consegui excluir a obra."
-      );
+      setErro("Não consegui excluir a obra.");
     }
   }
 
@@ -220,37 +154,21 @@ export default function Obras() {
           <h2>Obras</h2>
         </div>
 
-        <button
-          className="primary-button"
-          type="button"
-          onClick={abrirNovaObra}
-        >
+        <button className="primary-button" type="button" onClick={abrirNovaObra}>
           Nova obra
         </button>
       </div>
 
-      {erro ? (
-        <p className="form-error">{erro}</p>
-      ) : null}
-
-      {mensagem ? (
-        <p className="form-success">{mensagem}</p>
-      ) : null}
+      {erro ? <p className="form-error">{erro}</p> : null}
+      {mensagem ? <p className="form-success">{mensagem}</p> : null}
 
       {mostrarFormulario ? (
         <div className="panel">
           <div className="section-title-row">
             <div>
-              <h3>
-                {obraEditando
-                  ? "Editar obra"
-                  : "Nova obra"}
-              </h3>
-
+              <h3>{obraEditando ? "Editar obra" : "Nova obra"}</h3>
               <p>
-                O sistema pode tentar importar capítulos
-                automaticamente, mas você também pode
-                cadastrar manualmente depois.
+                Cadastre a obra aqui. Os capítulos devem ser cadastrados manualmente na tela de capítulos.
               </p>
             </div>
 
@@ -264,22 +182,13 @@ export default function Obras() {
             </button>
           </div>
 
-          <form
-            className="form-grid"
-            onSubmit={salvarObra}
-          >
+          <form className="form-grid" onSubmit={salvarObra}>
             <label className="field">
               <span>Nome da obra *</span>
-
               <input
                 type="text"
                 value={formulario.nome}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "nome",
-                    event.target.value
-                  )
-                }
+                onChange={(event) => atualizarCampo("nome", event.target.value)}
                 placeholder="Ex: Vale da Estrela"
                 disabled={salvando}
               />
@@ -287,16 +196,10 @@ export default function Obras() {
 
             <label className="field">
               <span>Autor</span>
-
               <input
                 type="text"
                 value={formulario.autor}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "autor",
-                    event.target.value
-                  )
-                }
+                onChange={(event) => atualizarCampo("autor", event.target.value)}
                 placeholder="Nome do autor"
                 disabled={salvando}
               />
@@ -304,16 +207,10 @@ export default function Obras() {
 
             <label className="field">
               <span>User do autor</span>
-
               <input
                 type="text"
                 value={formulario.userAutor}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "userAutor",
-                    event.target.value
-                  )
-                }
+                onChange={(event) => atualizarCampo("userAutor", event.target.value)}
                 placeholder="@user"
                 disabled={salvando}
               />
@@ -321,56 +218,34 @@ export default function Obras() {
 
             <label className="field">
               <span>Status</span>
-
               <select
                 value={formulario.status}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "status",
-                    event.target.value
-                  )
-                }
+                onChange={(event) => atualizarCampo("status", event.target.value)}
                 disabled={salvando}
               >
                 <option value="ativa">Ativa</option>
                 <option value="pausada">Pausada</option>
-                <option value="finalizada">
-                  Finalizada
-                </option>
+                <option value="finalizada">Finalizada</option>
                 <option value="inativa">Inativa</option>
               </select>
             </label>
 
             <label className="field field-full">
               <span>Link do Wattpad *</span>
-
               <input
                 type="url"
                 value={formulario.linkWattpad}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "linkWattpad",
-                    event.target.value
-                  )
-                }
+                onChange={(event) => atualizarCampo("linkWattpad", event.target.value)}
                 placeholder="https://www.wattpad.com/story/..."
-                disabled={
-                  salvando || Boolean(obraEditando)
-                }
+                disabled={salvando || Boolean(obraEditando)}
               />
             </label>
 
             <label className="field field-full">
               <span>Observações</span>
-
               <textarea
                 value={formulario.observacoes}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "observacoes",
-                    event.target.value
-                  )
-                }
+                onChange={(event) => atualizarCampo("observacoes", event.target.value)}
                 rows="4"
                 disabled={salvando}
               />
@@ -386,11 +261,7 @@ export default function Obras() {
                 Cancelar
               </button>
 
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={salvando}
-              >
+              <button className="primary-button" type="submit" disabled={salvando}>
                 {salvando
                   ? "Salvando..."
                   : obraEditando
@@ -406,26 +277,16 @@ export default function Obras() {
         <div className="section-title-row">
           <div>
             <h3>Obras cadastradas</h3>
-
-            <p>
-              Gerencie suas obras cadastradas.
-            </p>
+            <p>Gerencie suas obras cadastradas.</p>
           </div>
         </div>
 
         {carregando ? (
-          <p className="muted">
-            Carregando obras...
-          </p>
+          <p className="muted">Carregando obras...</p>
         ) : obras.length === 0 ? (
           <div className="empty-state compact">
-            <h3>
-              Nenhuma obra cadastrada
-            </h3>
-
-            <p>
-              Clique em “Nova obra” para começar.
-            </p>
+            <h3>Nenhuma obra cadastrada</h3>
+            <p>Clique em “Nova obra” para começar.</p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -445,65 +306,41 @@ export default function Obras() {
                     <td>
                       <div className="obra-cell">
                         {obra.capaUrl ? (
-                          <img
-                            src={obra.capaUrl}
-                            alt={obra.nome}
-                          />
+                          <img src={obra.capaUrl} alt={obra.nome} />
                         ) : (
-                          <div className="cover-placeholder">
-                            📕
-                          </div>
+                          <div className="cover-placeholder">📕</div>
                         )}
 
                         <div>
-                          <strong>
-                            {obra.nome}
-                          </strong>
-
-                          <span>
-                            {obra.linkWattpad}
-                          </span>
+                          <strong>{obra.nome}</strong>
+                          <span>{obra.linkWattpad}</span>
                         </div>
                       </div>
                     </td>
 
                     <td>
-                      <strong>
-                        {obra.autor ||
-                          "Não informado"}
-                      </strong>
-
+                      <strong>{obra.autor || "Não informado"}</strong>
                       <span className="table-subtext">
-                        {obra.userAutor ||
-                          "Sem user"}
+                        {obra.userAutor || "Sem user"}
                       </span>
                     </td>
 
                     <td>
-                      <span
-                        className={`status-badge ${
-                          obra.status || "ativa"
-                        }`}
-                      >
+                      <span className={`status-badge ${obra.status || "ativa"}`}>
                         {obra.status || "ativa"}
                       </span>
                     </td>
 
                     <td>
                       <div className="table-actions">
-                        <Link
-                          className="mini-button primary"
-                          to={`/obras/${obra.id}`}
-                        >
+                        <Link className="mini-button primary" to={`/obras/${obra.id}`}>
                           Capítulos
                         </Link>
 
                         <button
                           className="mini-button"
                           type="button"
-                          onClick={() =>
-                            abrirEdicao(obra)
-                          }
+                          onClick={() => abrirEdicao(obra)}
                         >
                           Editar
                         </button>
@@ -511,9 +348,7 @@ export default function Obras() {
                         <button
                           className="mini-button danger"
                           type="button"
-                          onClick={() =>
-                            removerObra(obra)
-                          }
+                          onClick={() => removerObra(obra)}
                         >
                           Excluir
                         </button>
