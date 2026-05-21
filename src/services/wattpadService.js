@@ -20,12 +20,15 @@ export async function buscarDadosDaObraWattpad(linkWattpad) {
   }
 
   if (!resposta.ok || !dados.sucesso) {
-    throw new Error(dados?.erro || "Não consegui buscar dados no Wattpad.");
+    throw new Error(
+      dados?.erro || "Não consegui buscar dados no Wattpad."
+    );
   }
 
   return {
     obra: dados.obra || {},
-    capitulos: dados.capitulos || []
+    capitulos: dados.capitulos || [],
+    debug: dados.debug || null
   };
 }
 
