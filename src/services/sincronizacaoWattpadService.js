@@ -1,165 +1,168 @@
+import { atualizarCapaObra } from "./obrasService.js";
+
 import {
-  criarCapitulo,
-  listarCapitulos
+  listarCapitulos,
+  salvarCapitulosImportados
 } from "./capitulosService.js";
 
 import { buscarDadosDaObraWattpad } from "./wattpadService.js";
 
 function normalizar(texto = "") {
-  return String(texto)
+  return String(texto || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function criarChavePorLink(link = "") {
-  return String(link || "").trim().toLowerCase();
-}
+function capitulosParecidos(a = {}, b = {}) {
+  const tituloA = normalizar(a.titulo);
+  const tituloB = normalizar(b.titulo);
 
-function criarChavePorTitulo(titulo = "") {
-  return normalizar(titulo || "");
-}
-
-function tratarCapituloImportado(capitulo = {}, ordem = 0) {
-  return {
-    titulo: capitulo.titulo || `Capítulo ${ordem + 1}`,
-    numero: capitulo.numero ?? null,
-    tipo: capitulo.tipo || "capitulo",
-    linkWattpad: capitulo.linkWattpad || "",
-    totalPalavras: Number(capitulo.totalPalavras) || 0,
-    totalParagrafos: Number(capitulo.totalParagrafos) || 0,
-    ordem: Number(capitulo.ordem ?? ordem),
-    observacoes: capitulo.observacoes || ""
-  };
-}
-
-function capituloJaExiste(capituloNovo = {}, capitulosSalvos = []) {
-  const linkNovo = criarChavePorLink(capituloNovo.linkWattpad);
-  const tituloNovo = criarChavePorTitulo(capituloNovo.titulo);
-
-  return capitulosSalvos.some((capituloSalvo) => {
-    const linkSalvo = criarChavePorLink(capituloSalvo.linkWattpad);
-    const tituloSalvo = criarChavePorTitulo(capituloSalvo.titulo);
-
-    if (linkNovo && linkSalvo && linkNovo === linkSalvo) {
-      return true;
-    }
-
-    if (!linkNovo && !linkSalvo && tituloNovo && tituloNovo === tituloSalvo) {
-      return true;
-    }
-
+  if (!tituloA || !tituloB) {
     return false;
-  });
+  }
+
+  if (tituloA === tituloB) {
+    return true;
+  }
+
+  if (
+    a.numero !== null &&
+    a.numero !== undefined &&
+    b.numero !== null &&
+    b.numero !== undefined
+  ) {
+    return Number(a.numero) === Number(b.numero);
+  }
+
+  return false;
 }
 
-export async function sincronizarObraComWattpad(obra, opcoes = {}) {
+export async function sincronizarObraComWattpad(
+  obra,
+  opcoes = {}
+) {
   const { onStatus } = opcoes;
 
-  if (!obra?.id || !obra?.linkWattpad) {
-    return {
-      sucesso: false,
-      ignorado: true,
-      criados: 0,
-      atualizados: 0,
-      totalWattpad: 0,
-      mensagem: "Obra sem link do Wattpad."
-    };
+  if (!obra?.linkWattpad) {
+    throw new Error("A obra não possui link do Wattpad.");
   }
 
-  onStatus?.({
-    tipo: "andamento",
-    titulo: "Sincronizando Wattpad",
-    detalhe: obra.nome || "Obra sem nome"
-  });
-
-  const dadosWattpad = await buscarDadosDaObraWattpad(obra.linkWattpad);
-  const capitulosWattpad = dadosWattpad.capitulos || [];
-
-  if (!capitulosWattpad.length) {
-    return {
-      sucesso: true,
-      ignorado: false,
-      criados: 0,
-      atualizados: 0,
-      totalWattpad: 0,
-      mensagem: "Nenhum capítulo encontrado no Wattpad."
-    };
+  if (typeof onStatus === "function") {
+    onStatus({
+      tipo: "andamento",
+      titulo: "Sincronizando obra",
+      detalhe: obra.nome
+    });
   }
 
-  const capitulosSalvos = await listarCapitulos(obra.id);
+  const dados = await buscarDadosDaObraWattpad(
+    obra.linkWattpad
+  );
 
-  let criados = 0;
+  const capitulosImportados = dados.capitulos || [];
 
-  for (let index = 0; index < capitulosWattpad.length; index += 1) {
-    const capituloTratado = tratarCapituloImportado(capitulosWattpad[index], index);
+  if (!capitulosImportados.length) {
+    throw new Error(
+      "Nenhum capítulo encontrado pela API segura do Wattpad."
+    );
+  }
 
-    if (capituloJaExiste(capituloTratado, capitulosSalvos)) {
-      continue;
+  const capitulosAtuais = await listarCapitulos(obra.id);
+
+  const novosCapitulos = [];
+
+  capitulosImportados.forEach((capituloImportado) => {
+    const jaExiste = capitulosAtuais.some((capituloAtual) =>
+      capitulosParecidos(capituloAtual, capituloImportado)
+    );
+
+    if (!jaExiste) {
+      novosCapitulos.push(capituloImportado);
     }
+  });
 
-    await criarCapitulo(obra.id, capituloTratado);
-    capitulosSalvos.push(capituloTratado);
-    criados += 1;
+  if (dados.obra?.capaUrl) {
+    try {
+      await atualizarCapaObra(
+        obra.id,
+        dados.obra.capaUrl
+      );
+    } catch (error) {
+      console.error(error);
+    }
   }
 
-  onStatus?.({
-    tipo: "sucesso",
-    titulo: "Obra sincronizada",
-    detalhe: `${obra.nome}: ${criados} novo(s).`
-  });
+  if (novosCapitulos.length > 0) {
+    await salvarCapitulosImportados(
+      obra.id,
+      novosCapitulos
+    );
+  }
+
+  if (typeof onStatus === "function") {
+    onStatus({
+      tipo: "sucesso",
+      titulo: "Obra sincronizada",
+      detalhe: `${obra.nome}: ${novosCapitulos.length} novo(s) capítulo(s).`
+    });
+  }
 
   return {
-    sucesso: true,
-    ignorado: false,
-    criados,
-    atualizados: 0,
-    totalWattpad: capitulosWattpad.length,
-    mensagem: `${criados} novo(s).`
+    obra,
+    adicionados: novosCapitulos.length,
+    totalImportado: capitulosImportados.length,
+    totalAtual: capitulosAtuais.length
   };
 }
 
-export async function sincronizarTodasAsObrasComWattpad(obras = [], opcoes = {}) {
+export async function sincronizarTodasAsObrasComWattpad(
+  obras = [],
+  opcoes = {}
+) {
   const { onStatus } = opcoes;
 
   const resumo = {
-    obras: obras.length,
-    sincronizadas: 0,
-    ignoradas: 0,
     criados: 0,
     atualizados: 0,
+    ignoradas: 0,
     erros: 0,
     detalhesErros: []
   };
 
   for (const obra of obras) {
     try {
-      const resultado = await sincronizarObraComWattpad(obra, { onStatus });
+      const resultado =
+        await sincronizarObraComWattpad(
+          obra,
+          opcoes
+        );
 
-      if (resultado.ignorado) {
-        resumo.ignoradas += 1;
-      } else {
-        resumo.sincronizadas += 1;
-      }
-
-      resumo.criados += resultado.criados || 0;
+      resumo.criados += resultado.adicionados;
+      resumo.atualizados += 1;
     } catch (error) {
       console.error(error);
 
       resumo.erros += 1;
+
       resumo.detalhesErros.push({
-        obra: obra.nome || "Obra sem nome",
+        obra: obra.nome || "Sem nome",
         link: obra.linkWattpad || "",
-        erro: error.message || "Erro desconhecido"
+        erro:
+          error.message ||
+          "Erro desconhecido ao sincronizar."
       });
 
-      onStatus?.({
-        tipo: "erro",
-        titulo: "Erro ao sincronizar obra",
-        detalhe: `${obra.nome || "Obra sem nome"}: ${error.message || "Erro desconhecido"}`
-      });
+      if (typeof onStatus === "function") {
+        onStatus({
+          tipo: "erro",
+          titulo: "Erro ao sincronizar",
+          detalhe: `${obra.nome}: ${error.message}`
+        });
+      }
     }
   }
 
